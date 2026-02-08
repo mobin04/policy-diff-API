@@ -2,15 +2,32 @@
   "name": "policy-diff-api",
   "version": "1.0.0",
   "description": "Policy Difference Analyzing API",
-  "main": "index.js",
+  "main": "dist/server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "nodemon",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint . --ext .ts",
+    "lint:fix": "eslint . --ext .ts --fix",
+    "format": "prettier --write ."
   },
   "author": "Mobin Mathew",
   "license": "ISC",
   "devDependencies": {
     "@types/node": "^25.2.2",
-    "ts-node-dev": "^2.0.0",
-    "typescript": "^5.9.3"
+    "@typescript-eslint/eslint-plugin": "^6.13.2",
+    "@typescript-eslint/parser": "^6.13.2",
+    "eslint": "^8.55.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.0.1",
+    "nodemon": "^3.1.0",
+    "prettier": "^3.1.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.4",
+    "fastify": "^5.7.4"
   }
 }
