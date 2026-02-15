@@ -4,6 +4,7 @@ import { normalizeContent } from './normalizer.service';
 import { extractSections } from './sectionExtractor.service';
 import { generateHash } from '../utils/hash';
 import { DiffResult } from '../types';
+import { analyzeRisk } from './riskEngine.service';
 
 export async function checkPage(url: string): Promise<DiffResult> {
   const rawHtml = await fetchPage(url);
@@ -17,9 +18,13 @@ export async function checkPage(url: string): Promise<DiffResult> {
   } else if (result.status === 'unchanged') {
     return { message: 'No meaningful change detected' };
   } else {
+    const changes = result.changes || [];
+    const riskAnalysis = analyzeRisk(changes, sections);
+
     return {
       message: 'Changes detected',
-      changes: result.changes,
+      risk_level: riskAnalysis.risk_level,
+      changes: riskAnalysis.changes,
     };
   }
 }
