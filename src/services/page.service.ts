@@ -1,11 +1,20 @@
 import { fetchPage } from '../utils/fetchPage';
 import { savePage } from '../repositories/page.repository';
+import { normalizeContent } from './normalizer.service';
+import { generateHash } from '../utils/hash';
 
 export async function checkPage(url: string) {
-  const content = await fetchPage(url);
-  console.log(content);
+  const rawHtml = await fetchPage(url);
+  const normalizedContent = normalizeContent(rawHtml);
+  console.log('✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨');
+  console.log(normalizedContent);
+  const contentHash = generateHash(normalizedContent);
 
-  await savePage(url, content);
+  const result = await savePage(url, normalizedContent, contentHash);
 
-  return { message: 'Page snapshot saved' };
+  if (result.changed) {
+    return { message: 'New version stored' };
+  } else {
+    return { message: 'No meaningful change detected' };
+  }
 }
