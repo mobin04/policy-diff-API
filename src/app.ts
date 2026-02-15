@@ -1,9 +1,9 @@
-import Fastify from "fastify";
-import { healthRoutes } from "./routes/health.route";
-import { checkRoutes } from "./routes/check.route";
+import Fastify from 'fastify';
+import { healthRoutes } from './routes/health.route';
+import { checkRoutes } from './routes/check.route';
 
 const app = Fastify({
-    logger: true
+  logger: true,
 });
 
 app.register(healthRoutes);

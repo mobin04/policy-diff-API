@@ -1,5 +1,7 @@
-import { FastifyReply, FastifyRequest } from "fastify";
+import { checkPage } from '../services/page.service';
 
-export const checkController = async (request: FastifyRequest, reply: FastifyReply) => {
-    return { message: "Check endpoint" };
-};
+export async function checkController(req: any) {
+  const { url } = req.body;
+
+  return await checkPage(url);
+}
