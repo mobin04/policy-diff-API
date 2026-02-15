@@ -10,7 +10,17 @@ export type Change = {
   type: ChangeType;
 };
 
+export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
+
+export type RiskedChange = {
+  section: string;
+  type: ChangeType;
+  risk: RiskLevel;
+  reason: string;
+};
+
 export type DiffResult = {
   message: string;
-  changes?: Change[];
+  risk_level?: RiskLevel;
+  changes?: RiskedChange[];
 };
