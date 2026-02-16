@@ -1,4 +1,4 @@
-import Fastify, { FastifyError, FastifyRequest, FastifyReply } from 'fastify';
+import Fastify, { FastifyRequest, FastifyReply } from 'fastify';
 import { healthRoutes } from './routes/health.route';
 import { checkRoutes } from './routes/check.route';
 import { apiKeyAuthPlugin } from './plugins/apiKeyAuth';
@@ -6,6 +6,7 @@ import { requestIdPlugin } from './plugins/requestId';
 import { requestLoggerPlugin } from './plugins/requestLogger';
 import { NODE_ENV } from './config';
 import { ErrorResponse } from './types/observability';
+import { ApiError, isApiError } from './errors';
 
 // Import types to ensure Fastify type extensions are loaded
 import './types/auth';
@@ -42,29 +43,58 @@ const app = Fastify({
  *
  * Provides consistent error responses across all endpoints.
  *
+ * Handles custom error types:
+ * - InvalidUrlError (400) - Bad URL format
+ * - FetchError (502) - Cannot reach target
+ * - HttpError (502) - Target returned error
+ *
  * Security considerations:
  * - Production: Hide stack traces to prevent information leakage
  * - Development: Include stack traces for debugging
  * - Always include request_id for log correlation
+ * - Never expose internal implementation details
  */
-app.setErrorHandler((error: FastifyError, request: FastifyRequest, reply: FastifyReply) => {
-  const statusCode = error.statusCode ?? 500;
+app.setErrorHandler((error: Error, request: FastifyRequest, reply: FastifyReply) => {
   const requestId = request.requestId ?? 'unknown';
 
-  // Log the full error server-side
+  // Determine status code from error type
+  let statusCode: number;
+  let errorName: string;
+  let message: string;
+
+  if (isApiError(error)) {
+    // Custom API errors have their own status codes
+    statusCode = (error as ApiError).statusCode;
+    errorName = error.name;
+    message = error.message;
+  } else if ('statusCode' in error && typeof error.statusCode === 'number') {
+    // Fastify errors (validation, etc.)
+    statusCode = error.statusCode;
+    errorName = error.name || 'Error';
+    message = error.message;
+  } else {
+    // Unknown errors - treat as internal server error
+    statusCode = 500;
+    errorName = 'InternalServerError';
+    // Hide internal error details in production
+    message = isProduction ? 'Internal server error' : error.message;
+  }
+
+  // Log the full error server-side (always include stack for debugging)
   request.log.error(
     {
       err: error,
       requestId,
       statusCode,
+      errorName,
     },
     'Request error',
   );
 
   // Build client-facing error response
   const response: ErrorResponse = {
-    error: error.name || 'InternalServerError',
-    message: statusCode >= 500 && isProduction ? 'Internal server error' : error.message,
+    error: errorName,
+    message,
     request_id: requestId,
   };
 
