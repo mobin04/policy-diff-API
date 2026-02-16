@@ -32,6 +32,7 @@ No tests are currently configured (`npm test` exits with error).
 Configuration is loaded from `.env.config` (not `.env`). Required variables:
 - `PORT` - Server port (default: 3000)
 - `DATABASE_URL` - PostgreSQL connection string
+- `NODE_ENV` - `development` or `production` (affects logging level and error detail)
 
 ## Architecture
 
@@ -67,6 +68,17 @@ Section removals are flagged based on title keywords (data, privacy, refund, lia
 - `pages` - Unique URLs being tracked
 - `page_versions` - Versioned snapshots with normalized content, hash, and extracted sections (JSONB)
 - `api_keys` - Hashed API keys with usage tracking and rate limits
+- `api_logs` - Audit trail (endpoint, status, response time per request)
+
+### Observability (plugins/)
+
+Plugin registration order in app.ts:
+1. `requestIdPlugin` - Generates/passes through `x-request-id` header
+2. `requestLoggerPlugin` - Structured logging + audit log persistence
+3. `apiKeyAuthPlugin` - Authentication
+
+All requests are logged with: requestId, method, url, apiKeyId, statusCode, responseTime.
+Errors include `request_id` in response for log correlation.
 
 ### Authentication (plugins/apiKeyAuth.ts)
 
@@ -81,3 +93,4 @@ API key auth applied to `/v1/*` routes. Keys are hashed with SHA-256 before stor
 - `Change` - `{ section, type: 'ADDED' | 'REMOVED' | 'MODIFIED' }`
 - `RiskedChange` - Change with `risk: 'LOW' | 'MEDIUM' | 'HIGH'` and reason
 - `DiffResult` - API response with message, optional risk_level and changes array
+- `ErrorResponse` - Standardized error format with request_id for correlation

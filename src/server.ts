@@ -6,9 +6,9 @@ const start = async () => {
   try {
     await initDB();
     await app.listen({ port: PORT, host: HOST });
-    console.log(`Server listening on port ${PORT}`);
+    app.log.info({ port: PORT, host: HOST }, 'Server started');
   } catch (err) {
-    app.log.error(err);
+    app.log.error(err, 'Failed to start server');
     process.exit(1);
   }
 };
