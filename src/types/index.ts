@@ -27,3 +27,6 @@ export type DiffResult = {
 
 // Re-export auth types
 export * from './auth';
+
+// Re-export observability types
+export * from './observability';
