@@ -24,3 +24,6 @@ export type DiffResult = {
   risk_level?: RiskLevel;
   changes?: RiskedChange[];
 };
+
+// Re-export auth types
+export * from './auth';
