@@ -32,19 +32,23 @@ export async function savePage(
     // Calculate diff
     const changes = diffSections(latestSections, sections);
 
-    await DB.query(
-      'INSERT INTO page_versions (page_id, content, content_hash, sections) VALUES ($1, $2, $3, $4)',
-      [pageId, content, contentHash, JSON.stringify(sections)],
-    );
+    await DB.query('INSERT INTO page_versions (page_id, content, content_hash, sections) VALUES ($1, $2, $3, $4)', [
+      pageId,
+      content,
+      contentHash,
+      JSON.stringify(sections),
+    ]);
 
     return { status: 'changed', changes };
   }
 
   // First version
-  await DB.query(
-    'INSERT INTO page_versions (page_id, content, content_hash, sections) VALUES ($1, $2, $3, $4)',
-    [pageId, content, contentHash, JSON.stringify(sections)],
-  );
+  await DB.query('INSERT INTO page_versions (page_id, content, content_hash, sections) VALUES ($1, $2, $3, $4)', [
+    pageId,
+    content,
+    contentHash,
+    JSON.stringify(sections),
+  ]);
 
   return { status: 'first_version' };
 }
