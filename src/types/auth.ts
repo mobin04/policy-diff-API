@@ -13,6 +13,10 @@ export type ApiKey = {
   usageCount: number;
   rateLimit: number;
   createdAt: Date;
+  tier: 'FREE' | 'PRO' | 'ENTERPRISE';
+  monthlyQuota: number;
+  monthlyUsage: number;
+  quotaResetAt: Date;
 };
 
 export type ApiKeyRow = {
@@ -24,6 +28,10 @@ export type ApiKeyRow = {
   usage_count: number;
   rate_limit: number;
   created_at: Date;
+   tier: 'FREE' | 'PRO' | 'ENTERPRISE';
+   monthly_quota: number;
+   monthly_usage: number;
+   quota_reset_at: Date;
 };
 
 export type AuthErrorResponse = {

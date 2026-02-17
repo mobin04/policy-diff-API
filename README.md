@@ -50,6 +50,8 @@ The system is built on a foundation of discrete, purposeful features:
 -   **SHA-256 Key Hashing**: Hashes all API keys before storage; raw keys are never stored.
 -   **Rate Limiting**: Protects the API from abuse with a simple, per-key usage limit.
 -   **Usage Tracking**: Increments a usage counter for each authenticated request.
+-   **API Key Tiering**: Classifies keys into `FREE`, `PRO`, and `ENTERPRISE` tiers with explicit per-key quotas.
+-   **Usage Quotas**: Enforces per-key monthly job quotas with deterministic, backend-only checks.
 -   **Observability Layer**:
     -   **Request IDs**: Injects a unique `x-request-id` into all logs and responses for end-to-end tracing.
     -   **Structured Logs**: Outputs JSON-formatted logs (Pino) for efficient parsing and analysis.
@@ -139,9 +141,9 @@ The database schema is designed to be normalized and efficient, with clear purpo
     -   **Indexing**: An index on `page_id` allows for quick retrieval of all versions for a given page.
 
 -   **`api_keys`**
-    -   **Purpose**: Manages API keys for authentication, rate limiting, and usage tracking.
-    -   **Key Columns**: `id` (SERIAL PK), `key_hash` (UNIQUE TEXT), `usage_count` (INTEGER), `rate_limit` (INTEGER).
-    -   **Indexing**: A unique index on `key_hash` provides fast O(1) lookups during authentication.
+    -   **Purpose**: Manages API keys for authentication, rate limiting, and usage/tiers.
+    -   **Key Columns**: `id` (SERIAL PK), `key_hash` (UNIQUE TEXT), `usage_count` (INTEGER), `rate_limit` (INTEGER), `tier` (`FREE`/`PRO`/`ENTERPRISE`), `monthly_quota` (INTEGER), `monthly_usage` (INTEGER), `quota_reset_at` (TIMESTAMPTZ).
+    -   **Indexing**: A unique index on `key_hash` provides fast O(1) lookups during authentication. Additional indexes on `tier` and `quota_reset_at` support operational queries and maintenance.
 
 -   **`api_logs`**
     -   **Purpose**: Provides a lightweight audit trail of API requests for observability and analytics. It intentionally does not store sensitive data like request/response bodies.
@@ -205,7 +207,7 @@ Submits a URL for monitoring. Returns immediately with a job ID.
 
 ### `POST /v1/monitor/batch`
 
-Submits up to 20 URLs for monitoring in a single request. The server canonicalizes and deduplicates URLs, creates a batch, then creates one job per URL. Returns immediately with a `batch_id` and the created jobs.
+Submits a batch of URLs for monitoring in a single request. The server canonicalizes and deduplicates URLs, creates a batch, then creates one job per URL. Tier-based limits apply to the maximum batch size.
 
 **Example Request:**
 
@@ -314,6 +316,26 @@ Retrieves the aggregated status of a batch and a deterministic list of its jobs 
 }
 ```
 
+### `GET /v1/usage`
+
+Returns the current tier and usage metrics for the authenticated API key.
+
+**Example Request:**
+
+`GET /v1/usage`
+
+**Example Response (200 OK):**
+
+```json
+{
+  "tier": "FREE",
+  "monthly_quota": 100,
+  "monthly_usage": 42,
+  "remaining": 58,
+  "quota_reset_at": "2026-03-01T00:00:00Z"
+}
+```
+
 ### `GET /health`
 
 A liveness probe that returns `200 OK` if the server is running.
@@ -344,11 +366,16 @@ All API errors follow a standard format.
 
 ```json
 {
-  "error": "ErrorName",
+  "error": "ERROR_CODE",
   "message": "A descriptive error message.",
   "request_id": "unique-request-id-for-tracing"
 }
 ```
+
+Additional error codes introduced by quota and tier enforcement:
+
+-   `QUOTA_EXCEEDED`: The API key has reached its monthly job quota.
+-   `BATCH_LIMIT_EXCEEDED`: The requested batch size exceeds the tier's allowed maximum.
 
 ## 9. Error Handling Model
 
@@ -384,6 +411,8 @@ Security is a core design principle, implemented through several layers:
 -   **No Raw Keys Stored**: The original, raw API key is never persisted, mitigating the risk of a database breach.
 -   **No Sensitive Logs**: Request and response bodies, which may contain sensitive information, are never written to audit logs.
 -   **Rate Limiting**: A per-key counter prevents abuse and ensures fair usage.
+-   **Quota Enforcement**: Per-key monthly job quotas are enforced deterministically at job creation time; excess usage is rejected with a clear error contract.
+-   **Tier Restrictions**: FREE, PRO, and ENTERPRISE tiers are enforced server-side, including batch-size limits and quota ceilings.
 -   **Deterministic Behavior**: The predictable, rule-based nature of the system makes it less susceptible to adversarial inputs designed to exploit unpredictable AI models.
 
 ## 12. Production Considerations
@@ -392,6 +421,9 @@ Security is a core design principle, implemented through several layers:
 -   **No Distributed Queue**: The system uses the `monitor_jobs` table in PostgreSQL as a simple job queue. This is sufficient for a single-node deployment but is not a scalable, distributed queue like Redis/BullMQ or RabbitMQ.
 -   **Batches Are Not Orchestrated**: Batches are a grouping mechanism (`monitor_batches`) over the existing job model. There is no cron, no external scheduler, and no distributed execution layer.
 -   **Concurrency & Queuing**: The system limits active `PROCESSING` jobs and queues additional jobs in memory. The API returns `429 Too Many Requests` only when overloaded and unable to safely queue more work.
+-   **Quota Reset Model**: Quotas are tracked per calendar month. When `quota_reset_at` is in the past, `monthly_usage` is reset to `0` and `quota_reset_at` is advanced to the first day of the next month at `00:00:00Z` on the next usage/visibility check.
+-   **Quota Accounting Semantics**: Quotas are incremented when jobs are created (on `POST /v1/monitor` and `POST /v1/monitor/batch`), not when jobs complete. This ensures deterministic, request-based enforcement independent of job outcomes.
+-   **Transactional Safety**: Quota checks and increments are performed inside a database transaction with row-level locking on `api_keys`, preventing race conditions for concurrent requests using the same key.
 -   **Scaling Path**: To scale horizontally, the job processing logic must be migrated to a distributed queue system, and the in-memory concurrency guard must be replaced with a distributed locking mechanism (e.g., using Redis).
 -   **Observability Strategy**: The system is designed for observability with structured logging, request IDs, and health checks. In production, logs should be aggregated into a centralized logging platform (e.g., ELK Stack, Datadog, CloudWatch Logs).
 -   **Failure Recovery Strategy**: On restart, the system automatically cleans up orphaned `PROCESSING` jobs. Database backups should be performed regularly to recover from data loss.
@@ -453,6 +485,8 @@ The following environment variables must be configured in a `.env.config` file:
 -   **Distributed Batch Execution**: Move batch/job execution to a distributed orchestration layer to support horizontal scaling and stronger delivery guarantees.
 -   **Retry Orchestration**: Add configurable retry logic with exponential backoff for transient network failures.
 -   **SLA Monitoring**: Add latency/error-rate tracking with SLO/SLA reporting per API key and endpoint.
+-   **Billing Integration**: Integrate with a billing provider to map tiers and quotas to paid plans, including overage handling and detailed invoicing.
+-   **Plan-Based Feature Gating**: Extend the tier model to gate advanced features (e.g., higher batch sizes, webhook delivery guarantees, historical diff depth) based on plan.
 
 ## 17. License
 

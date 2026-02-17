@@ -1,5 +1,5 @@
 import { DB } from '../db';
-import { ApiKey, ApiKeyRow, ApiKeyEnvironment } from '../types/auth';
+import { ApiKey, ApiKeyRow, ApiKeyEnvironment } from '../types';
 import { hashApiKey } from '../utils/apiKey';
 
 /**
@@ -15,6 +15,10 @@ function rowToApiKey(row: ApiKeyRow): ApiKey {
     usageCount: row.usage_count,
     rateLimit: row.rate_limit,
     createdAt: row.created_at,
+    tier: row.tier,
+    monthlyQuota: row.monthly_quota,
+    monthlyUsage: row.monthly_usage,
+    quotaResetAt: row.quota_reset_at,
   };
 }
 
@@ -24,7 +28,10 @@ function rowToApiKey(row: ApiKeyRow): ApiKey {
  */
 export async function findApiKeyByHash(keyHash: string): Promise<ApiKey | null> {
   const result = await DB.query<ApiKeyRow>(
-    'SELECT id, key_hash, name, environment, is_active, usage_count, rate_limit, created_at FROM api_keys WHERE key_hash = $1',
+    `SELECT id, key_hash, name, environment, is_active, usage_count, rate_limit,
+            created_at, tier, monthly_quota, monthly_usage, quota_reset_at
+     FROM api_keys
+     WHERE key_hash = $1`,
     [keyHash],
   );
 
@@ -70,9 +77,10 @@ export async function createApiKey(
   const keyHash = hashApiKey(rawKey);
 
   const result = await DB.query<ApiKeyRow>(
-    `INSERT INTO api_keys (key_hash, name, environment, rate_limit)
-     VALUES ($1, $2, $3, $4)
-     RETURNING id, key_hash, name, environment, is_active, usage_count, rate_limit, created_at`,
+    `INSERT INTO api_keys (key_hash, name, environment, rate_limit, tier, monthly_quota, monthly_usage, quota_reset_at)
+     VALUES ($1, $2, $3, $4, 'FREE', 100, 0, NOW())
+     RETURNING id, key_hash, name, environment, is_active, usage_count, rate_limit,
+               created_at, tier, monthly_quota, monthly_usage, quota_reset_at`,
     [keyHash, name, environment, rateLimit],
   );
 

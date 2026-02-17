@@ -28,6 +28,36 @@ export abstract class ApiError extends Error {
 }
 
 /**
+ * Quota Exceeded Error
+ * Thrown when an API key has exhausted its monthly quota.
+ *
+ * HTTP Status: 403 Forbidden
+ */
+export class QuotaExceededError extends ApiError {
+  readonly statusCode = 403;
+
+  constructor(message = 'Monthly usage limit reached') {
+    super(message);
+    this.name = 'QUOTA_EXCEEDED';
+  }
+}
+
+/**
+ * Batch Limit Exceeded Error
+ * Thrown when a batch submission exceeds the tier's maximum batch size.
+ *
+ * HTTP Status: 400 Bad Request
+ */
+export class BatchLimitExceededError extends ApiError {
+  readonly statusCode = 400;
+
+  constructor(message = 'Batch size exceeds allowed tier limit') {
+    super(message);
+    this.name = 'BATCH_LIMIT_EXCEEDED';
+  }
+}
+
+/**
  * Bad Request Error
  * Used for validation errors not covered by specialized error types.
  *

@@ -18,6 +18,7 @@ import {
 } from '../repositories/monitorJob.repository';
 import { MonitorJob, JobErrorType, DiffResult, Section } from '../types';
 import { InvalidUrlError, FetchError, HttpError, isApiError } from '../errors';
+import { consumeJobs } from './usage.service';
 
 /**
  * Logger interface matching Fastify's logger
@@ -106,18 +107,22 @@ export function canAcceptNewJobs(jobCount = 1): boolean {
  * 3. Create job with PENDING status
  * 4. Schedule async processing via setImmediate
  *
+ * @param apiKeyId - ID of authenticated API key (for quota enforcement)
  * @param rawUrl - User-provided URL
  * @param logger - Optional logger for observability
  * @returns Created job entity
  * @throws InvalidUrlError if URL is invalid
  */
-export async function createMonitorJob(rawUrl: string, logger?: Logger): Promise<MonitorJob> {
+export async function createMonitorJob(apiKeyId: number, rawUrl: string, logger?: Logger): Promise<MonitorJob> {
   // Canonicalize URL before any operation
   const canonicalUrl = canonicalizeUrl(rawUrl);
 
   if (logger) {
-    logger.debug({ rawUrl, canonicalUrl }, 'Creating monitor job');
+    logger.debug({ apiKeyId, rawUrl, canonicalUrl }, 'Creating monitor job');
   }
+
+  // Quota enforcement: single job
+  await consumeJobs(apiKeyId, 1);
 
   // Ensure page exists (upsert)
   const pageId = await ensurePageExists(canonicalUrl);
