@@ -1,6 +1,7 @@
 import Fastify, { FastifyRequest, FastifyReply } from 'fastify';
 import { healthRoutes } from './routes/health.route';
 import { checkRoutes } from './routes/check.route';
+import { monitorRoutes } from './routes/monitor.route';
 import { apiKeyAuthPlugin } from './plugins/apiKeyAuth';
 import { requestIdPlugin } from './plugins/requestId';
 import { requestLoggerPlugin } from './plugins/requestLogger';
@@ -124,5 +125,8 @@ app.register(healthRoutes);
 
 // 5. Protected routes under /v1 prefix
 app.register(checkRoutes, { prefix: '/v1' });
+
+// 6. Async monitoring routes under /v1 prefix
+app.register(monitorRoutes, { prefix: '/v1' });
 
 export default app;
