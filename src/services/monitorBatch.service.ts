@@ -10,14 +10,13 @@ import {
 import { canAcceptNewJobs, enqueueMonitorJobProcessing } from './monitorJob.service';
 import { BatchStatusResponse, MonitorBatchCreatedResponse } from '../types';
 import { BadRequestError, TooManyRequestsError } from '../errors';
+import { consumeJobs } from './usage.service';
 
 type Logger = {
   debug: (obj: object, msg: string) => void;
   info: (obj: object, msg: string) => void;
   error: (obj: object, msg: string) => void;
 };
-
-const MAX_URLS_PER_BATCH = 20;
 
 export async function createMonitorBatch(
   apiKeyId: number,
@@ -29,13 +28,12 @@ export async function createMonitorBatch(
     throw new BadRequestError('urls must be a non-empty array');
   }
 
-  if (urls.length > MAX_URLS_PER_BATCH) {
-    throw new BadRequestError(`Too many URLs: max ${MAX_URLS_PER_BATCH}`);
-  }
-
   // Canonicalize (validates) then deduplicate by canonical URL identity
   const canonicalUrls = urls.map((u) => canonicalizeUrl(u));
   const uniqueUrls = Array.from(new Set(canonicalUrls));
+
+  // Tier-based quota and batch-size enforcement (all-or-nothing)
+  await consumeJobs(apiKeyId, uniqueUrls.length, { enforceBatchLimit: true });
 
   // Overload protection: allow queuing, but reject unbounded growth
   if (!canAcceptNewJobs(uniqueUrls.length)) {

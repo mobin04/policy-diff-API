@@ -50,8 +50,17 @@ export async function createMonitorJobController(
     return;
   }
 
+  if (!request.apiKey) {
+    reply.code(401).send({
+      error: 'Unauthorized',
+      message: 'API key missing or invalid',
+      request_id: request.requestId,
+    });
+    return;
+  }
+
   // Create job and trigger async processing
-  const job = await createMonitorJob(url, request.log);
+  const job = await createMonitorJob(request.apiKey.id, url, request.log);
 
   const response: MonitorJobCreatedResponse = {
     job_id: job.id,
