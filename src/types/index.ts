@@ -52,3 +52,6 @@ export * from './observability';
 
 // Re-export job types
 export * from './job';
+
+// Re-export batch types
+export * from './batch';

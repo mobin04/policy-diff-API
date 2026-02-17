@@ -6,7 +6,8 @@ import { generateHash } from '../utils/hash';
 import { canonicalizeUrl } from '../utils/canonicalizeUrl';
 import { diffSections } from './differ.service';
 import { analyzeRisk } from './riskEngine.service';
-import { acquireJob, releaseJob, canAcquireJob } from '../utils/concurrencyGuard';
+import { acquireJob, releaseJob, canAcquireJob, getActiveJobCount, getMaxConcurrentJobs } from '../utils/concurrencyGuard';
+import { ensurePageExists } from '../repositories/page.repository';
 import {
   createJob,
   markJobProcessing,
@@ -27,6 +28,75 @@ type Logger = {
   error: (obj: object, msg: string) => void;
 };
 
+type QueuedJob = { jobId: string; logger?: Logger };
+
+/**
+ * In-memory FIFO queue for jobs waiting on concurrency slots.
+ *
+ * This keeps the system single-instance and deterministic:
+ * - Jobs are created in DB immediately (PENDING)
+ * - Processing starts when a concurrency slot becomes available
+ * - No Redis / message queue / cron is introduced
+ */
+const pendingQueue: QueuedJob[] = [];
+const queuedJobIds = new Set<string>();
+let drainScheduled = false;
+
+/**
+ * Maximum number of queued jobs allowed in memory.
+ * When exceeded, the system rejects new job submissions with 429.
+ */
+const MAX_QUEUED_JOBS = 1000;
+
+function scheduleDrain(): void {
+  if (drainScheduled) return;
+  drainScheduled = true;
+  setImmediate(() => {
+    drainScheduled = false;
+
+    // Start as many jobs as we have capacity for
+    while (pendingQueue.length > 0 && canAcquireJob()) {
+      const next = pendingQueue.shift()!;
+      queuedJobIds.delete(next.jobId);
+
+      processMonitorJob(next.jobId, next.logger).catch((err) => {
+        // This catch should never trigger as processMonitorJob handles all errors
+        // But we log it just in case
+        if (next.logger) {
+          next.logger.error({ jobId: next.jobId, error: String(err) }, 'Unexpected error in queued job processing');
+        }
+      });
+    }
+  });
+}
+
+/**
+ * Enqueue a job for async processing, respecting MAX_CONCURRENT_JOBS.
+ *
+ * If a slot is available, processing will begin immediately (next tick).
+ * If not, the job remains PENDING until a slot frees up.
+ */
+export function enqueueMonitorJobProcessing(jobId: string, logger?: Logger): void {
+  if (queuedJobIds.has(jobId)) return;
+  queuedJobIds.add(jobId);
+  pendingQueue.push({ jobId, logger });
+  scheduleDrain();
+}
+
+/**
+ * Check if the system can accept new jobs without unbounded queuing.
+ *
+ * Policy:
+ * - Jobs may be queued in-memory when MAX_CONCURRENT_JOBS is reached
+ * - Reject only when the in-memory queue would exceed MAX_QUEUED_JOBS
+ */
+export function canAcceptNewJobs(jobCount = 1): boolean {
+  const inFlight = getActiveJobCount();
+  const queued = pendingQueue.length;
+  const capacity = getMaxConcurrentJobs() + MAX_QUEUED_JOBS;
+  return inFlight + queued + jobCount <= capacity;
+}
+
 /**
  * Create a new monitor job for the given URL
  *
@@ -39,7 +109,7 @@ type Logger = {
  * @param rawUrl - User-provided URL
  * @param logger - Optional logger for observability
  * @returns Created job entity
- * @throws If concurrency limit reached
+ * @throws InvalidUrlError if URL is invalid
  */
 export async function createMonitorJob(rawUrl: string, logger?: Logger): Promise<MonitorJob> {
   // Canonicalize URL before any operation
@@ -50,12 +120,7 @@ export async function createMonitorJob(rawUrl: string, logger?: Logger): Promise
   }
 
   // Ensure page exists (upsert)
-  const pageResult = await DB.query<{ id: number }>(
-    'INSERT INTO pages (url) VALUES ($1) ON CONFLICT (url) DO UPDATE SET url = EXCLUDED.url RETURNING id',
-    [canonicalUrl],
-  );
-
-  const pageId = pageResult.rows[0].id;
+  const pageId = await ensurePageExists(canonicalUrl);
 
   // Create job with PENDING status
   const job = await createJob(pageId);
@@ -64,17 +129,9 @@ export async function createMonitorJob(rawUrl: string, logger?: Logger): Promise
     logger.info({ jobId: job.id, pageId, canonicalUrl }, 'Monitor job created');
   }
 
-  // Schedule async processing
-  // setImmediate ensures the HTTP response is sent before processing starts
-  setImmediate(() => {
-    processMonitorJob(job.id, logger).catch((err) => {
-      // This catch should never trigger as processMonitorJob handles all errors
-      // But we log it just in case
-      if (logger) {
-        logger.error({ jobId: job.id, error: String(err) }, 'Unexpected error in job processing');
-      }
-    });
-  });
+  // Schedule async processing (queued if at capacity)
+  // This ensures the HTTP response is sent before processing starts
+  enqueueMonitorJobProcessing(job.id, logger);
 
   return job;
 }
@@ -104,12 +161,8 @@ export async function createMonitorJob(rawUrl: string, logger?: Logger): Promise
 export async function processMonitorJob(jobId: string, logger?: Logger): Promise<void> {
   // Try to acquire concurrency slot
   if (!acquireJob(jobId)) {
-    // This shouldn't happen as we check before creating,
-    // but handle gracefully
-    await markJobFailed(jobId, 'INTERNAL_ERROR');
-    if (logger) {
-      logger.error({ jobId }, 'Failed to acquire concurrency slot');
-    }
+    // At capacity: keep job PENDING and queue for later processing
+    enqueueMonitorJobProcessing(jobId, logger);
     return;
   }
 
@@ -164,6 +217,9 @@ export async function processMonitorJob(jobId: string, logger?: Logger): Promise
   } finally {
     // Always release the concurrency slot
     releaseJob(jobId);
+
+    // Kick the queue to start next jobs, if any
+    scheduleDrain();
   }
 }
 
@@ -300,7 +356,7 @@ function classifyError(error: unknown): JobErrorType {
  * Used by controller to return 429 before creating job
  */
 export function canAcceptNewJob(): boolean {
-  return canAcquireJob();
+  return canAcceptNewJobs(1);
 }
 
 /**

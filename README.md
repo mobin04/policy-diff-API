@@ -10,18 +10,19 @@ This document provides a comprehensive overview of the PolicyDiff system archite
 2.  [Key Features](#2-key-features)
 3.  [System Architecture](#3-system-architecture)
 4.  [Async Monitoring Model](#4-async-monitoring-model)
-5.  [Database Schema Overview](#5-database-schema-overview)
-6.  [Monitoring Flow (End-to-End)](#6-monitoring-flow-end-to-end)
-7.  [API Reference](#7-api-reference)
-8.  [Error Handling Model](#8-error-handling-model)
-9.  [Performance & Optimization](#9-performance--optimization)
-10. [Security Model](#10-security-model)
-11. [Production Considerations](#11-production-considerations)
-12. [Local Development Setup](#12-local-development-setup)
-13. [Environment Variables](#13-environment-variables)
-14. [Design Principles](#14-design-principles)
-15. [Roadmap](#15-roadmap)
-16. [License](#16-license)
+5.  [Batch Monitoring](#5-batch-monitoring)
+6.  [Database Schema Overview](#6-database-schema-overview)
+7.  [Monitoring Flow (End-to-End)](#7-monitoring-flow-end-to-end)
+8.  [API Reference](#8-api-reference)
+9.  [Error Handling Model](#9-error-handling-model)
+10. [Performance & Optimization](#10-performance--optimization)
+11. [Security Model](#11-security-model)
+12. [Production Considerations](#12-production-considerations)
+13. [Local Development Setup](#13-local-development-setup)
+14. [Environment Variables](#14-environment-variables)
+15. [Design Principles](#15-design-principles)
+16. [Roadmap](#16-roadmap)
+17. [License](#17-license)
 
 ## 1. Project Overview
 
@@ -58,6 +59,7 @@ The system is built on a foundation of discrete, purposeful features:
 -   **Early Exit**: Terminates processing immediately if the new content hash matches the previous version's hash.
 -   **Cached `last_result` Storage**: Stores the most recent analysis result in the `pages` table for fast retrieval during cooldown periods.
 -   **Async Job System**: Offloads long-running page analysis to a background job queue, providing an immediate API response.
+-   **Batch Monitoring**: Submit up to 20 URLs in a single request and poll aggregated batch status.
 -   **Concurrency Guard**: Limits the number of concurrent jobs to prevent system overload.
 -   **Deterministic Error Classification**: Maps internal application errors to a fixed set of public error types.
 
@@ -81,10 +83,12 @@ The initial synchronous model was replaced with an asynchronous, job-based archi
 The async model works as follows:
 
 1.  A client sends a request to `POST /v1/monitor`.
-2.  The API validates the request and checks the concurrency limit.
+2.  The API validates the request and checks an overload policy (bounded in-memory queue).
 3.  A job is created in the `monitor_jobs` table with `PENDING` status.
 4.  The API immediately returns a `202 Accepted` response with the `job_id`.
-5.  A background process picks up the job and executes the monitoring pipeline.
+5.  A background worker processes jobs, respecting the concurrency limit.
+
+Jobs created via `POST /v1/monitor/batch` follow the same lifecycle, but include a `batch_id` that links them to a `monitor_batches` row for aggregated polling.
 
 **Job Lifecycle & State Machine:**
 
@@ -97,7 +101,7 @@ A job progresses through a simple, robust state machine:
 
 **Concurrency Guard:**
 
-To prevent system overload, an in-memory **concurrency guard** limits the number of `PROCESSING` jobs to a predefined maximum (e.g., 5). If the limit is reached, the API will respond with `429 Too Many Requests` until a slot becomes free.
+To prevent system overload, an in-memory **concurrency guard** limits the number of `PROCESSING` jobs to a predefined maximum (e.g., 5). When the limit is reached, additional jobs remain `PENDING` and are queued in memory until a slot becomes free. The API only returns `429 Too Many Requests` when the server is overloaded and cannot safely queue more work.
 
 **Single-Instance Limitation:**
 
@@ -107,7 +111,20 @@ This concurrency guard is **not distributed**. It only works for a single Node.j
 
 If the server restarts, any jobs in the `PROCESSING` state are considered "orphaned." On startup, the system automatically finds these jobs and transitions them to `FAILED` with an `INTERNAL_ERROR` type, ensuring no jobs are stuck in an incomplete state.
 
-## 5. Database Schema Overview
+## 5. Batch Monitoring
+
+Batch Monitoring allows clients to submit multiple URLs in a single request and track them under one `batch_id`.
+
+-   **Submission**: `POST /v1/monitor/batch` accepts up to 20 URLs, canonicalizes and deduplicates them, creates one `monitor_batches` row, and creates one `monitor_jobs` row per URL with `batch_id` set.
+-   **Status polling**: `GET /v1/batches/:batchId` returns aggregated counts (`completed`, `processing`, `failed`) and a deterministic list of jobs ordered by `created_at ASC`.
+
+**Concurrency behavior:**
+
+-   The system enforces a maximum number of concurrent `PROCESSING` jobs (in-memory).
+-   When at capacity, additional jobs remain `PENDING` and are queued in memory until a slot becomes available.
+-   The API only returns `429 Too Many Requests` when the server is overloaded and cannot safely queue more jobs.
+
+## 6. Database Schema Overview
 
 The database schema is designed to be normalized and efficient, with clear purposes for each table.
 
@@ -131,14 +148,26 @@ The database schema is designed to be normalized and efficient, with clear purpo
     -   **Key Columns**: `id` (SERIAL PK), `api_key_id` (FK to `api_keys.id`), `status_code` (INTEGER), `response_time` (INTEGER).
     -   **Indexing**: Indexes on `api_key_id` and `created_at` support efficient querying for usage reports and time-based analysis.
 
+-   **`monitor_batches`**
+    -   **Purpose**: Groups multiple monitoring jobs under a single batch for aggregated status polling.
+    -   **Key Columns**: `id` (UUID PK), `api_key_id` (FK to `api_keys.id`), `total_jobs` (INTEGER), `created_at` (TIMESTAMPTZ).
+    -   **Indexing**: Indexes on `api_key_id` and `created_at DESC` support listing recent batches per API key.
+
 -   **`monitor_jobs`**
     -   **Purpose**: Manages the state of asynchronous monitoring tasks.
-    -   **Key Columns**: `id` (UUID PK), `page_id` (FK to `pages.id`), `status` (VARCHAR), `result` (JSONB), `error_type` (VARCHAR).
-    -   **Indexing**: Indexes on `page_id` and `status` allow for efficient querying of jobs related to a specific page or in a specific state (e.g., finding orphaned jobs).
+    -   **Key Columns**: `id` (UUID PK), `page_id` (FK to `pages.id`), `batch_id` (nullable FK to `monitor_batches.id`), `status` (VARCHAR), `result` (JSONB), `error_type` (VARCHAR).
+    -   **Indexing**: Indexes on `page_id`, `status`, and `batch_id` allow for efficient querying by page, state, and batch aggregation.
 
-## 6. Monitoring Flow (End-to-End)
+## 7. Monitoring Flow (End-to-End)
 
 The core pipeline executes in the following order:
+
+**Batch-level flow:**
+
+1.  Client submits `POST /v1/monitor/batch` with up to 20 URLs.
+2.  API canonicalizes and deduplicates URLs, creates a `monitor_batches` row, then creates `monitor_jobs` rows linked by `batch_id`.
+3.  Jobs transition through the same state machine (`PENDING → PROCESSING → COMPLETED/FAILED`).
+4.  Client polls `GET /v1/batches/:batchId` for aggregated progress and per-job status.
 
 1.  **URL Canonicalization**: The input URL is cleaned: protocol is set to `https`, query parameters and fragments are removed, and the path is normalized.
 2.  **Snapshot Fetch**: The system fetches the raw HTML content from the canonical URL.
@@ -149,7 +178,7 @@ The core pipeline executes in the following order:
 7.  **Result Storage**: If changes were found, a new record is created in `page_versions`. The final analysis is stored in the `monitor_jobs` table's `result` column.
 8.  **Job Completion**: The job status is updated to `COMPLETED` or `FAILED`.
 
-## 7. API Reference
+## 8. API Reference
 
 All endpoints are prefixed with `/v1`. Authentication is required via an `Authorization: Bearer <key>` header.
 
@@ -171,6 +200,42 @@ Submits a URL for monitoring. Returns immediately with a job ID.
 {
   "job_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
   "status": "PENDING"
+}
+```
+
+### `POST /v1/monitor/batch`
+
+Submits up to 20 URLs for monitoring in a single request. The server canonicalizes and deduplicates URLs, creates a batch, then creates one job per URL. Returns immediately with a `batch_id` and the created jobs.
+
+**Example Request:**
+
+```json
+{
+  "urls": [
+    "https://example.com/privacy",
+    "https://example.com/terms"
+  ]
+}
+```
+
+**Example Response (202 Accepted):**
+
+```json
+{
+  "batch_id": "b2c3d4e5-f678-9012-3456-7890abcdef12",
+  "total_jobs": 2,
+  "jobs": [
+    {
+      "url": "https://example.com/privacy",
+      "job_id": "c1b2c3d4-e5f6-7890-1234-567890abcdef",
+      "status": "PENDING"
+    },
+    {
+      "url": "https://example.com/terms",
+      "job_id": "d1b2c3d4-e5f6-7890-1234-567890abcdef",
+      "status": "PENDING"
+    }
+  ]
 }
 ```
 
@@ -222,6 +287,33 @@ Retrieves the status and result of a monitoring job.
 }
 ```
 
+### `GET /v1/batches/:batchId`
+
+Retrieves the aggregated status of a batch and a deterministic list of its jobs (ordered by `created_at ASC`).
+
+**Example Request:**
+
+`GET /v1/batches/b2c3d4e5-f678-9012-3456-7890abcdef12`
+
+**Example Response (200 OK):**
+
+```json
+{
+  "batch_id": "b2c3d4e5-f678-9012-3456-7890abcdef12",
+  "total": 5,
+  "completed": 3,
+  "processing": 1,
+  "failed": 1,
+  "jobs": [
+    { "job_id": "11111111-1111-1111-1111-111111111111", "status": "COMPLETED" },
+    { "job_id": "22222222-2222-2222-2222-222222222222", "status": "COMPLETED" },
+    { "job_id": "33333333-3333-3333-3333-333333333333", "status": "COMPLETED" },
+    { "job_id": "44444444-4444-4444-4444-444444444444", "status": "PROCESSING" },
+    { "job_id": "55555555-5555-5555-5555-555555555555", "status": "FAILED" }
+  ]
+}
+```
+
 ### `GET /health`
 
 A liveness probe that returns `200 OK` if the server is running.
@@ -258,7 +350,7 @@ All API errors follow a standard format.
 }
 ```
 
-## 8. Error Handling Model
+## 9. Error Handling Model
 
 The system uses a deterministic error classification model. Internal application errors are mapped to a fixed set of public-facing error types, ensuring that no internal implementation details (like stack traces) are ever exposed to the client.
 
@@ -274,7 +366,7 @@ The system uses a deterministic error classification model. Internal application
 
 All errors are logged with a `request_id` to correlate client reports with server-side logs for efficient debugging.
 
-## 9. Performance & Optimization
+## 10. Performance & Optimization
 
 Several strategies are employed to ensure efficient operation:
 
@@ -284,7 +376,7 @@ Several strategies are employed to ensure efficient operation:
 -   **Cached Result Usage**: If a request is made during a cooldown period, the previously computed result (`last_result`) is returned instantly.
 -   **Early Exit Logic**: The pipeline terminates immediately if the overall content hash has not changed, saving significant CPU cycles.
 
-## 10. Security Model
+## 11. Security Model
 
 Security is a core design principle, implemented through several layers:
 
@@ -294,15 +386,17 @@ Security is a core design principle, implemented through several layers:
 -   **Rate Limiting**: A per-key counter prevents abuse and ensures fair usage.
 -   **Deterministic Behavior**: The predictable, rule-based nature of the system makes it less susceptible to adversarial inputs designed to exploit unpredictable AI models.
 
-## 11. Production Considerations
+## 12. Production Considerations
 
 -   **Single-Instance Async Limitation**: The current async job system relies on an in-memory concurrency guard and is **not safe for multi-instance deployments**. Running more than one instance will lead to incorrect concurrency management.
 -   **No Distributed Queue**: The system uses the `monitor_jobs` table in PostgreSQL as a simple job queue. This is sufficient for a single-node deployment but is not a scalable, distributed queue like Redis/BullMQ or RabbitMQ.
+-   **Batches Are Not Orchestrated**: Batches are a grouping mechanism (`monitor_batches`) over the existing job model. There is no cron, no external scheduler, and no distributed execution layer.
+-   **Concurrency & Queuing**: The system limits active `PROCESSING` jobs and queues additional jobs in memory. The API returns `429 Too Many Requests` only when overloaded and unable to safely queue more work.
 -   **Scaling Path**: To scale horizontally, the job processing logic must be migrated to a distributed queue system, and the in-memory concurrency guard must be replaced with a distributed locking mechanism (e.g., using Redis).
 -   **Observability Strategy**: The system is designed for observability with structured logging, request IDs, and health checks. In production, logs should be aggregated into a centralized logging platform (e.g., ELK Stack, Datadog, CloudWatch Logs).
 -   **Failure Recovery Strategy**: On restart, the system automatically cleans up orphaned `PROCESSING` jobs. Database backups should be performed regularly to recover from data loss.
 
-## 12. Local Development Setup
+## 13. Local Development Setup
 
 1.  **Node.js**: Requires Node.js v20 or later.
 2.  **PostgreSQL**: A running PostgreSQL instance is required.
@@ -334,7 +428,7 @@ Security is a core design principle, implemented through several layers:
 
     The command will output the raw API key. Store it securely.
 
-## 13. Environment Variables
+## 14. Environment Variables
 
 The following environment variables must be configured in a `.env.config` file:
 
@@ -343,7 +437,7 @@ The following environment variables must be configured in a `.env.config` file:
     -   Format: `postgresql://USER:PASSWORD@HOST:PORT/DATABASE`
 -   `NODE_ENV`: The application environment (`development` or `production`).
 
-## 14. Design Principles
+## 15. Design Principles
 
 -   **Deterministic over Probabilistic**: Outputs must be predictable and repeatable.
 -   **Reliability over Features**: System stability and data integrity are paramount.
@@ -352,13 +446,14 @@ The following environment variables must be configured in a `.env.config` file:
 -   **No UI Until Necessary**: Focus on a robust, API-first architecture.
 -   **Predictable JSON Contract**: Maintain a stable and well-documented API contract.
 
-## 15. Roadmap
+## 16. Roadmap
 
 -   **Distributed Job Queue**: Migrate from the PostgreSQL-based queue to a scalable solution like BullMQ with Redis to support multi-instance deployments.
 -   **Webhooks**: Implement webhooks to notify clients upon job completion, removing the need for polling.
--   **Batch Monitoring**: Introduce an endpoint for submitting multiple URLs in a single request.
+-   **Distributed Batch Execution**: Move batch/job execution to a distributed orchestration layer to support horizontal scaling and stronger delivery guarantees.
 -   **Retry Orchestration**: Add configurable retry logic with exponential backoff for transient network failures.
+-   **SLA Monitoring**: Add latency/error-rate tracking with SLO/SLA reporting per API key and endpoint.
 
-## 16. License
+## 17. License
 
 This project is licensed under the ISC License.

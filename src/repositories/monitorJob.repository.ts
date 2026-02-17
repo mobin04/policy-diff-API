@@ -8,6 +8,7 @@ function rowToEntity(row: MonitorJobRow): MonitorJob {
   return {
     id: row.id,
     pageId: row.page_id,
+    batchId: row.batch_id,
     status: row.status,
     result: row.result,
     errorType: row.error_type,
@@ -21,14 +22,15 @@ function rowToEntity(row: MonitorJobRow): MonitorJob {
  * Create a new monitor job with PENDING status
  *
  * @param pageId - ID of the page to monitor
+ * @param batchId - Optional batch ID to group this job
  * @returns Created job entity
  */
-export async function createJob(pageId: number): Promise<MonitorJob> {
+export async function createJob(pageId: number, batchId: string | null = null): Promise<MonitorJob> {
   const result = await DB.query<MonitorJobRow>(
-    `INSERT INTO monitor_jobs (page_id, status)
-     VALUES ($1, 'PENDING')
+    `INSERT INTO monitor_jobs (page_id, batch_id, status)
+     VALUES ($1, $2, 'PENDING')
      RETURNING *`,
-    [pageId],
+    [pageId, batchId],
   );
 
   return rowToEntity(result.rows[0]);
