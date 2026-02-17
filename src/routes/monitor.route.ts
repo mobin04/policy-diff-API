@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { createMonitorJobController, getJobStatusController } from '../controllers/monitor.controller';
+import { createMonitorBatchController } from '../controllers/monitorBatch.controller';
 
 /**
  * Monitor routes for async policy monitoring
@@ -27,6 +28,37 @@ export async function monitorRoutes(fastify: FastifyInstance) {
    * - 429: Server at capacity
    */
   fastify.post('/monitor', createMonitorJobController);
+
+  /**
+   * POST /v1/monitor/batch
+   *
+   * Create a new batch of async monitoring jobs.
+   * Returns immediately with a batch_id and job list for polling.
+   *
+   * Request body:
+   * { "urls": ["https://example.com/privacy", "https://example.com/terms"] }
+   */
+  fastify.post(
+    '/monitor/batch',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['urls'],
+          additionalProperties: false,
+          properties: {
+            urls: {
+              type: 'array',
+              items: { type: 'string' },
+              minItems: 1,
+              maxItems: 20,
+            },
+          },
+        },
+      },
+    },
+    createMonitorBatchController,
+  );
 
   /**
    * GET /v1/jobs/:jobId

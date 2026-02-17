@@ -38,6 +38,7 @@ export type JobErrorType =
 export type MonitorJob = {
   id: string;
   pageId: number;
+  batchId: string | null;
   status: JobStatus;
   result: DiffResult | null;
   errorType: JobErrorType | null;
@@ -52,6 +53,7 @@ export type MonitorJob = {
 export type MonitorJobRow = {
   id: string;
   page_id: number;
+  batch_id: string | null;
   status: JobStatus;
   result: DiffResult | null;
   error_type: JobErrorType | null;

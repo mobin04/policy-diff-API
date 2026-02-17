@@ -22,6 +22,23 @@ export type PageInfo = {
 };
 
 /**
+ * Ensure a page row exists for a canonical URL and return its ID.
+ *
+ * This is used by async monitoring jobs to create jobs without fetching content.
+ *
+ * @param url - Canonical URL (must be pre-canonicalized!)
+ * @returns Page ID
+ */
+export async function ensurePageExists(url: string): Promise<number> {
+  const result = await DB.query<{ id: number }>(
+    'INSERT INTO pages (url) VALUES ($1) ON CONFLICT (url) DO UPDATE SET url = EXCLUDED.url RETURNING id',
+    [url],
+  );
+
+  return result.rows[0].id;
+}
+
+/**
  * Get page info including last check time and cached result
  *
  * @param url - Canonical URL

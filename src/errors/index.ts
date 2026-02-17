@@ -28,6 +28,36 @@ export abstract class ApiError extends Error {
 }
 
 /**
+ * Bad Request Error
+ * Used for validation errors not covered by specialized error types.
+ *
+ * HTTP Status: 400 Bad Request
+ */
+export class BadRequestError extends ApiError {
+  readonly statusCode = 400;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'BadRequestError';
+  }
+}
+
+/**
+ * Too Many Requests Error
+ * Used when the system is overloaded and cannot queue additional work safely.
+ *
+ * HTTP Status: 429 Too Many Requests
+ */
+export class TooManyRequestsError extends ApiError {
+  readonly statusCode = 429;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'TooManyRequestsError';
+  }
+}
+
+/**
  * Invalid URL Error
  * Thrown when URL format is invalid, empty, or uses unsupported protocol
  *
