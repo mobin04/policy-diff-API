@@ -1,6 +1,12 @@
+/**
+ * Section extracted from HTML page
+ * Includes content hash for efficient comparison
+ */
 export type Section = {
   title: string;
   content: string;
+  /** SHA-256 hash of normalized content for fast comparison */
+  hash: string;
 };
 
 export type ChangeType = 'ADDED' | 'REMOVED' | 'MODIFIED';
@@ -19,10 +25,23 @@ export type RiskedChange = {
   reason: string;
 };
 
+/**
+ * Standard diff result returned by check endpoint
+ */
 export type DiffResult = {
   message: string;
   risk_level?: RiskLevel;
   changes?: RiskedChange[];
+};
+
+/**
+ * Extended check result including skip status
+ */
+export type CheckResult = {
+  status: 'processed' | 'skipped';
+  reason?: string;
+  last_checked?: string;
+  result?: DiffResult;
 };
 
 // Re-export auth types

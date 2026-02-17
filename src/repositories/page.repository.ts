@@ -1,5 +1,5 @@
 import { DB } from '../db';
-import { Section, Change } from '../types';
+import { Section, Change, DiffResult } from '../types';
 import { diffSections } from '../services/differ.service';
 
 /**
@@ -11,6 +11,80 @@ export type SavePageResult = {
   pageId: number;
   changes?: Change[];
 };
+
+/**
+ * Page info returned from getPageInfo
+ */
+export type PageInfo = {
+  id: number;
+  lastCheckedAt: Date | null;
+  lastResult: DiffResult | null;
+};
+
+/**
+ * Get page info including last check time and cached result
+ *
+ * @param url - Canonical URL
+ * @returns Page info or null if page doesn't exist
+ */
+export async function getPageInfo(url: string): Promise<PageInfo | null> {
+  const result = await DB.query('SELECT id, last_checked_at, last_result FROM pages WHERE url = $1', [url]);
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  const row = result.rows[0];
+  return {
+    id: row.id,
+    lastCheckedAt: row.last_checked_at,
+    lastResult: row.last_result as DiffResult | null,
+  };
+}
+
+/**
+ * Check if page is within cooldown period
+ *
+ * @param pageId - Page ID
+ * @param minIntervalMinutes - Minimum minutes between checks
+ * @returns Object with cooldown status and last check time
+ */
+export async function checkCooldown(
+  pageId: number,
+  minIntervalMinutes: number,
+): Promise<{ inCooldown: boolean; lastCheckedAt: Date | null; lastResult: DiffResult | null }> {
+  const result = await DB.query('SELECT last_checked_at, last_result FROM pages WHERE id = $1', [pageId]);
+
+  if (result.rows.length === 0) {
+    return { inCooldown: false, lastCheckedAt: null, lastResult: null };
+  }
+
+  const lastCheckedAt = result.rows[0].last_checked_at as Date | null;
+  const lastResult = result.rows[0].last_result as DiffResult | null;
+
+  if (!lastCheckedAt) {
+    return { inCooldown: false, lastCheckedAt: null, lastResult };
+  }
+
+  const cooldownMs = minIntervalMinutes * 60 * 1000;
+  const timeSinceLastCheck = Date.now() - lastCheckedAt.getTime();
+
+  return {
+    inCooldown: timeSinceLastCheck < cooldownMs,
+    lastCheckedAt,
+    lastResult,
+  };
+}
+
+/**
+ * Update page's last check time and cached result
+ */
+export async function updatePageCache(pageId: number, result: DiffResult): Promise<void> {
+  await DB.query('UPDATE pages SET last_checked_at = NOW(), last_result = $2 WHERE id = $1', [
+    pageId,
+    JSON.stringify(result),
+  ]);
+}
 
 /**
  * Save or update a page and create a new version if content changed
@@ -57,12 +131,20 @@ export async function savePage(
     const latestHash = latestVersionResult.rows[0].content_hash;
     const latestSections = latestVersionResult.rows[0].sections as Section[];
 
+    // OPTIMIZATION: Skip diff if hash is identical
+    // This avoids expensive section comparison when nothing changed
     if (latestHash === contentHash) {
       return { status: 'unchanged', pageId };
     }
 
     // Calculate diff between old and new sections
     const changes = diffSections(latestSections, sections);
+
+    // OPTIMIZATION: If no meaningful changes detected, treat as unchanged
+    // This handles cases where hash differs but content is semantically same
+    if (changes.length === 0) {
+      return { status: 'unchanged', pageId };
+    }
 
     await DB.query('INSERT INTO page_versions (page_id, content, content_hash, sections) VALUES ($1, $2, $3, $4)', [
       pageId,

@@ -1,12 +1,53 @@
 import * as cheerio from 'cheerio';
+import crypto from 'crypto';
 import { Section } from '../types';
 
+/**
+ * WHY SECTION-LEVEL HASHING IMPROVES STABILITY:
+ * - Enables O(1) comparison instead of string comparison
+ * - Hash changes only when content actually changes
+ * - Immune to whitespace/formatting variations after normalization
+ * - Allows quick "no change" detection without full diff
+ */
+
+/**
+ * Intermediate section type during extraction (before hash is computed)
+ */
+type PartialSection = {
+  title: string;
+  content: string;
+};
+
+/**
+ * Generate SHA-256 hash of content
+ */
+function hashContent(content: string): string {
+  return crypto.createHash('sha256').update(content).digest('hex');
+}
+
+/**
+ * Normalize content for consistent hashing
+ * Removes extra whitespace and normalizes for comparison
+ */
+function normalizeForHash(content: string): string {
+  return content.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Extract sections from HTML and compute content hashes
+ *
+ * @param html - Raw HTML string
+ * @returns Array of sections with title, content, and hash
+ */
 export function extractSections(html: string): Section[] {
   const $ = cheerio.load(html);
-  const sections: Section[] = [];
-  let currentSection: Section = { title: 'general', content: '' };
+  const partialSections: PartialSection[] = [];
+  let currentSection: PartialSection = { title: 'general', content: '' };
 
-  function traverse(node: any) {
+  // Use cheerio's AnyNode type for traverse function
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function traverse(node: any): void {
+    // Skip script and style elements
     if (node.type === 'script' || node.type === 'style' || node.name === 'script' || node.name === 'style') {
       return;
     }
@@ -21,7 +62,7 @@ export function extractSections(html: string): Section[] {
         // Push previous section
         currentSection.content = currentSection.content.replace(/\s+/g, ' ').trim();
         if (currentSection.content || currentSection.title !== 'general') {
-          sections.push(currentSection);
+          partialSections.push(currentSection);
         }
 
         // Start new section
@@ -29,14 +70,12 @@ export function extractSections(html: string): Section[] {
           title: $(node).text().toLowerCase().trim(),
           content: '',
         };
-      } else {
-        if (node.children) {
-          node.children.forEach((child: any) => traverse(child));
-        }
+      } else if (node.children) {
+        node.children.forEach((child: unknown) => traverse(child));
       }
     } else if (node.children) {
       // Handle root or other node types
-      node.children.forEach((child: any) => traverse(child));
+      node.children.forEach((child: unknown) => traverse(child));
     }
   }
 
@@ -45,16 +84,24 @@ export function extractSections(html: string): Section[] {
     traverse(body);
   } else {
     // Fallback if no body tag (e.g. partial HTML)
-    if ($.root()[0]) {
-      traverse($.root()[0]);
+    const root = $.root()[0];
+    if (root) {
+      traverse(root);
     }
   }
 
   // Push the last section
   currentSection.content = currentSection.content.replace(/\s+/g, ' ').trim();
   if (currentSection.content || currentSection.title !== 'general') {
-    sections.push(currentSection);
+    partialSections.push(currentSection);
   }
-  console.log(sections);
+
+  // Convert to full sections with hashes
+  const sections: Section[] = partialSections.map((partial) => ({
+    title: partial.title,
+    content: partial.content,
+    hash: hashContent(normalizeForHash(partial.content)),
+  }));
+
   return sections;
 }
