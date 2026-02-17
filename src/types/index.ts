@@ -49,3 +49,6 @@ export * from './auth';
 
 // Re-export observability types
 export * from './observability';
+
+// Re-export job types
+export * from './job';
