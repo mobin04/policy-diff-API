@@ -1,10 +1,10 @@
 import { fetchPage } from '../utils/fetchPage';
-import { savePage } from '../repositories/page.repository';
+import { savePage, getPageInfo, checkCooldown, updatePageCache } from '../repositories/page.repository';
 import { normalizeContent } from './normalizer.service';
 import { extractSections } from './sectionExtractor.service';
 import { generateHash } from '../utils/hash';
 import { canonicalizeUrl } from '../utils/canonicalizeUrl';
-import { DiffResult } from '../types';
+import { DiffResult, CheckResult } from '../types';
 import { analyzeRisk } from './riskEngine.service';
 
 /**
@@ -15,63 +15,110 @@ type Logger = {
 };
 
 /**
- * Check a page for policy changes
+ * Options for checkPage function
+ */
+export type CheckPageOptions = {
+  /** Minimum interval in minutes between checks (cooldown) */
+  minInterval?: number;
+  /** Optional logger for debug tracing */
+  logger?: Logger;
+};
+
+/**
+ * Check a page for policy changes with optional cooldown
  *
- * WHY CANONICALIZATION MUST HAPPEN BEFORE DB LOOKUP:
- * Without it, URL variants create duplicate page records, causing
- * the "first snapshot" bug where the same page appears as new.
+ * PERFORMANCE OPTIMIZATIONS:
+ * 1. Cooldown check - Skip processing if checked recently
+ * 2. Hash comparison - Skip diff if content hash unchanged
+ * 3. Section hashing - Fast comparison via hashes
+ * 4. Meaningful change filter - Ignore trivial edits
+ * 5. Result caching - Return cached result when appropriate
  *
  * @param rawUrl - User-provided URL (will be canonicalized)
- * @param logger - Optional logger for debug tracing
- * @returns DiffResult with status and any detected changes
+ * @param options - Check options including minInterval and logger
+ * @returns CheckResult with status and result/skip info
  */
-export async function checkPage(rawUrl: string, logger?: Logger): Promise<DiffResult> {
+export async function checkPage(rawUrl: string, options: CheckPageOptions = {}): Promise<CheckResult> {
+  const { minInterval, logger } = options;
+
   // CRITICAL: Canonicalize URL BEFORE any database operation
-  // This ensures consistent identity regardless of URL variants:
-  // - Different casing: Example.com → example.com
-  // - Trailing slashes: /privacy/ → /privacy
-  // - Query params: ?utm=test → removed
-  // - Protocol: http → https
   const canonicalUrl = canonicalizeUrl(rawUrl);
 
-  // Debug logging for URL canonicalization tracing
   if (logger) {
-    logger.debug({ rawUrl, canonicalUrl }, 'URL canonicalized');
+    logger.debug({ rawUrl, canonicalUrl, minInterval }, 'URL canonicalized');
   }
 
-  // Fetch using canonical URL
+  // OPTIMIZATION 1: Check cooldown if minInterval specified
+  if (minInterval && minInterval > 0) {
+    const pageInfo = await getPageInfo(canonicalUrl);
+
+    if (pageInfo) {
+      const cooldownStatus = await checkCooldown(pageInfo.id, minInterval);
+
+      if (cooldownStatus.inCooldown) {
+        if (logger) {
+          logger.debug(
+            { canonicalUrl, lastCheckedAt: cooldownStatus.lastCheckedAt },
+            'Cooldown active, returning cached result',
+          );
+        }
+
+        // Return cached result if available, otherwise generic skip response
+        return {
+          status: 'skipped',
+          reason: 'Cooldown active',
+          last_checked: cooldownStatus.lastCheckedAt?.toISOString(),
+          result: cooldownStatus.lastResult ?? undefined,
+        };
+      }
+    }
+  }
+
+  // Fetch and process page
   const rawHtml = await fetchPage(canonicalUrl);
   const normalizedContent = normalizeContent(rawHtml);
   const sections = extractSections(rawHtml);
   const contentHash = generateHash(normalizedContent);
 
-  // Save using ONLY the canonical URL - never the raw input
-  const result = await savePage(canonicalUrl, normalizedContent, contentHash, sections);
+  // Save using ONLY the canonical URL
+  const saveResult = await savePage(canonicalUrl, normalizedContent, contentHash, sections);
 
-  // Debug logging for page identity tracing
   if (logger) {
-    logger.debug(
-      {
-        canonicalUrl,
-        pageId: result.pageId,
-        status: result.status,
-      },
-      'Page processed',
-    );
+    logger.debug({ canonicalUrl, pageId: saveResult.pageId, status: saveResult.status }, 'Page processed');
   }
 
-  if (result.status === 'first_version') {
-    return { message: 'First snapshot stored' };
-  } else if (result.status === 'unchanged') {
-    return { message: 'No meaningful change detected' };
+  // Build the diff result
+  let diffResult: DiffResult;
+
+  if (saveResult.status === 'first_version') {
+    diffResult = { message: 'First snapshot stored' };
+  } else if (saveResult.status === 'unchanged') {
+    diffResult = { message: 'No meaningful change detected' };
   } else {
-    const changes = result.changes || [];
+    const changes = saveResult.changes || [];
     const riskAnalysis = analyzeRisk(changes, sections);
 
-    return {
+    diffResult = {
       message: 'Changes detected',
       risk_level: riskAnalysis.risk_level,
       changes: riskAnalysis.changes,
     };
   }
+
+  // Cache the result for future cooldown checks
+  await updatePageCache(saveResult.pageId, diffResult);
+
+  return {
+    status: 'processed',
+    result: diffResult,
+  };
+}
+
+/**
+ * Legacy wrapper for backwards compatibility
+ * Returns DiffResult directly instead of CheckResult
+ */
+export async function checkPageLegacy(rawUrl: string, logger?: Logger): Promise<DiffResult> {
+  const result = await checkPage(rawUrl, { logger });
+  return result.result ?? { message: 'Unknown status' };
 }

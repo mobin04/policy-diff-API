@@ -5,7 +5,7 @@ import { apiKeyAuthPlugin } from './plugins/apiKeyAuth';
 import { requestIdPlugin } from './plugins/requestId';
 import { requestLoggerPlugin } from './plugins/requestLogger';
 import { NODE_ENV } from './config';
-import { ErrorResponse } from './types/observability';
+import { ErrorResponse } from './types';
 import { ApiError, isApiError } from './errors';
 
 // Import types to ensure Fastify type extensions are loaded
