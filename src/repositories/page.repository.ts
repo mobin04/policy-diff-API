@@ -27,10 +27,12 @@ export type PageInfo = {
  * This is used by async monitoring jobs to create jobs without fetching content.
  *
  * @param url - Canonical URL (must be pre-canonicalized!)
+ * @param client - Optional DB client for transaction
  * @returns Page ID
  */
-export async function ensurePageExists(url: string): Promise<number> {
-  const result = await DB.query<{ id: number }>(
+export async function ensurePageExists(url: string, client?: typeof DB | { query: typeof DB.query }): Promise<number> {
+  const db = client || DB;
+  const result = await db.query<{ id: number }>(
     'INSERT INTO pages (url) VALUES ($1) ON CONFLICT (url) DO UPDATE SET url = EXCLUDED.url RETURNING id',
     [url],
   );

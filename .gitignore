@@ -50,6 +50,8 @@ typings/
 # Optional npm cache directory
 .npm
 AGENTS.md
+GEMINI.md
+GEMINI_STRATEGY.md
 # Optional eslint cache
 .eslintcache
 

@@ -10,8 +10,13 @@ function rowToEntity(row: MonitorBatchRow): MonitorBatch {
   };
 }
 
-export async function createBatch(apiKeyId: number, totalJobs: number): Promise<MonitorBatch> {
-  const result = await DB.query<MonitorBatchRow>(
+export async function createBatch(
+  apiKeyId: number,
+  totalJobs: number,
+  client?: typeof DB | { query: typeof DB.query },
+): Promise<MonitorBatch> {
+  const db = client || DB;
+  const result = await db.query<MonitorBatchRow>(
     `INSERT INTO monitor_batches (api_key_id, total_jobs)
      VALUES ($1, $2)
      RETURNING *`,

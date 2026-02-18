@@ -14,11 +14,16 @@ import {
   markJobCompleted,
   markJobFailed,
   getJobById,
-  markOrphanedJobsFailed,
+  getActiveJobCountForKey,
 } from '../repositories/monitorJob.repository';
+import { saveIdempotencyRecord } from '../repositories/idempotency.repository';
 import { MonitorJob, JobErrorType, DiffResult, Section } from '../types';
-import { InvalidUrlError, FetchError, HttpError, isApiError } from '../errors';
-import { consumeJobs } from './usage.service';
+import { InvalidUrlError, FetchError, HttpError, isApiError, QuotaExceededError } from '../errors';
+import { loadUsageRowForUpdate } from './usage.service';
+import { runCrashRecovery } from './startupRecoveryService';
+
+const MAX_JOB_RUNTIME_MS = 15000;
+const MAX_CONCURRENT_JOBS_PER_KEY = 2;
 
 /**
  * Logger interface matching Fastify's logger
@@ -103,70 +108,98 @@ export function canAcceptNewJobs(jobCount = 1): boolean {
  *
  * Flow:
  * 1. Canonicalize URL
- * 2. Ensure page exists (create if not)
- * 3. Create job with PENDING status
- * 4. Schedule async processing via setImmediate
+ * 2. BEGIN Transaction
+ * 3. Enforce and Consume Quota (atomic)
+ * 4. Ensure page exists (upsert)
+ * 5. Create job with PENDING status
+ * 6. Store idempotency record if requested
+ * 7. COMMIT Transaction
+ * 8. Schedule async processing via setImmediate
  *
- * @param apiKeyId - ID of authenticated API key (for quota enforcement)
+ * @param apiKeyId - ID of authenticated API key
  * @param rawUrl - User-provided URL
- * @param logger - Optional logger for observability
+ * @param logger - Optional logger
+ * @param idempotencyOptions - Optional key and body hash for idempotency storage
  * @returns Created job entity
- * @throws InvalidUrlError if URL is invalid
  */
-export async function createMonitorJob(apiKeyId: number, rawUrl: string, logger?: Logger): Promise<MonitorJob> {
-  // Canonicalize URL before any operation
+export async function createMonitorJob(
+  apiKeyId: number,
+  rawUrl: string,
+  logger?: Logger,
+  idempotencyOptions?: { key: string; requestHash: string },
+): Promise<MonitorJob> {
   const canonicalUrl = canonicalizeUrl(rawUrl);
 
   if (logger) {
     logger.debug({ apiKeyId, rawUrl, canonicalUrl }, 'Creating monitor job');
   }
 
-  // Quota enforcement: single job
-  await consumeJobs(apiKeyId, 1);
+  const client = await DB.connect();
+  try {
+    await client.query('BEGIN');
 
-  // Ensure page exists (upsert)
-  const pageId = await ensurePageExists(canonicalUrl);
+    // 1. Quota consumption: single job (atomic within transaction)
+    const usage = await loadUsageRowForUpdate(client, apiKeyId);
+    if (usage.monthly_usage + 1 > usage.monthly_quota) {
+      throw new QuotaExceededError();
+    }
+    await client.query('UPDATE api_keys SET monthly_usage = monthly_usage + 1 WHERE id = $1', [apiKeyId]);
 
-  // Create job with PENDING status
-  const job = await createJob(pageId);
+    // 2. Ensure page exists (upsert)
+    const pageId = await ensurePageExists(canonicalUrl, client);
 
-  if (logger) {
-    logger.info({ jobId: job.id, pageId, canonicalUrl }, 'Monitor job created');
+    // 3. Create job with PENDING status
+    const job = await createJob(pageId, apiKeyId, null, client);
+
+    // 4. Store idempotency record if requested (atomic with job creation)
+    if (idempotencyOptions) {
+      const responseBody = {
+        job_id: job.id,
+        status: job.status,
+      };
+      await saveIdempotencyRecord(
+        apiKeyId,
+        idempotencyOptions.key,
+        idempotencyOptions.requestHash,
+        responseBody,
+        client,
+      );
+    }
+
+    await client.query('COMMIT');
+
+    if (logger) {
+      logger.info({ jobId: job.id, pageId, canonicalUrl }, 'Monitor job created');
+    }
+
+    // Schedule async processing
+    enqueueMonitorJobProcessing(job.id, logger);
+
+    return job;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
   }
-
-  // Schedule async processing (queued if at capacity)
-  // This ensures the HTTP response is sent before processing starts
-  enqueueMonitorJobProcessing(job.id, logger);
-
-  return job;
 }
 
 /**
  * Process a monitor job through the full pipeline
  *
  * Pipeline:
- * 1. Acquire concurrency slot
- * 2. Mark job as PROCESSING
- * 3. Fetch page content
- * 4. Normalize content
- * 5. Extract sections
- * 6. Generate content hash
- * 7. Compare with previous version (diff)
- * 8. Analyze risk
- * 9. Store result and mark COMPLETED
- *
- * On failure:
- * - Classify error type
- * - Mark job as FAILED with error_type
- * - Release concurrency slot
+ * 1. Acquire global concurrency slot
+ * 2. Check per-API-key concurrency limit
+ * 3. Mark job as PROCESSING
+ * 4. Execute monitoring pipeline with timeout enforcement
  *
  * @param jobId - UUID of the job to process
  * @param logger - Optional logger for observability
  */
 export async function processMonitorJob(jobId: string, logger?: Logger): Promise<void> {
-  // Try to acquire concurrency slot
+  // Try to acquire global concurrency slot
   if (!acquireJob(jobId)) {
-    // At capacity: keep job PENDING and queue for later processing
+    // At global capacity: keep job PENDING and queue for later processing
     enqueueMonitorJobProcessing(jobId, logger);
     return;
   }
@@ -178,7 +211,23 @@ export async function processMonitorJob(jobId: string, logger?: Logger): Promise
       if (logger) {
         logger.error({ jobId }, 'Job not found');
       }
+      releaseJob(jobId);
       return;
+    }
+
+    // Per-API-key concurrency limit: MAX_CONCURRENT_JOBS_PER_KEY (2)
+    // This ensures fairness across keys and prevents a single key from hogging the system.
+    if (job.apiKeyId != null) {
+      const activeJobsForKey = await getActiveJobCountForKey(job.apiKeyId);
+      if (activeJobsForKey >= MAX_CONCURRENT_JOBS_PER_KEY) {
+        if (logger) {
+          logger.debug({ jobId, apiKeyId: job.apiKeyId }, 'Per-key concurrency limit reached, re-enqueuing');
+        }
+        // At per-key capacity: release global slot and retry start via re-enqueue after delay
+        releaseJob(jobId);
+        setTimeout(() => enqueueMonitorJobProcessing(jobId, logger), 1000);
+        return;
+      }
     }
 
     // Mark as processing
@@ -201,26 +250,49 @@ export async function processMonitorJob(jobId: string, logger?: Logger): Promise
 
     const url = pageResult.rows[0].url;
 
-    // Execute the monitoring pipeline
-    const result = await executeMonitoringPipeline(job.pageId, url, logger);
+    // Timeout enforcement: MAX_JOB_RUNTIME_MS (15000)
+    const controller = new AbortController();
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        controller.abort();
+        reject(new Error('JOB_TIMEOUT'));
+      }, MAX_JOB_RUNTIME_MS);
+    });
 
-    // Store result and mark completed
-    await markJobCompleted(jobId, result);
+    try {
+      // Execute the monitoring pipeline with timeout and abortion support
+      const result = await Promise.race([
+        executeMonitoringPipeline(job.pageId, url, controller.signal, logger),
+        timeoutPromise,
+      ]);
 
-    if (logger) {
-      logger.info({ jobId, status: 'COMPLETED' }, 'Job completed successfully');
+      // Store result and mark completed
+      await markJobCompleted(jobId, result);
+
+      if (logger) {
+        logger.info({ jobId, status: 'COMPLETED' }, 'Job completed successfully');
+      }
+    } catch (pipelineError) {
+      const errorType = pipelineError instanceof Error && pipelineError.message === 'JOB_TIMEOUT'
+        ? 'JOB_TIMEOUT'
+        : classifyError(pipelineError);
+
+      await markJobFailed(jobId, errorType as JobErrorType);
+
+      if (logger) {
+        logger.error({ jobId, errorType, error: String(pipelineError) }, 'Job execution failed');
+      }
     }
   } catch (error) {
-    // Classify and handle error
+    // Root level failure (DB, schema, etc)
     const errorType = classifyError(error);
-
     await markJobFailed(jobId, errorType);
 
     if (logger) {
-      logger.error({ jobId, errorType, error: String(error) }, 'Job failed');
+      logger.error({ jobId, error: String(error) }, 'Unexpected job error');
     }
   } finally {
-    // Always release the concurrency slot
+    // Always release the global concurrency slot
     releaseJob(jobId);
 
     // Kick the queue to start next jobs, if any
@@ -236,12 +308,18 @@ export async function processMonitorJob(jobId: string, logger?: Logger): Promise
  *
  * @param pageId - Database ID of the page
  * @param url - Canonical URL to fetch
+ * @param signal - AbortSignal for timeout/cancellation
  * @param logger - Optional logger
  * @returns DiffResult with analysis
  */
-async function executeMonitoringPipeline(pageId: number, url: string, logger?: Logger): Promise<DiffResult> {
-  // Fetch page content
-  const rawHtml = await fetchPage(url);
+async function executeMonitoringPipeline(
+  pageId: number,
+  url: string,
+  signal: AbortSignal,
+  logger?: Logger,
+): Promise<DiffResult> {
+  // Fetch page content (respects AbortSignal)
+  const rawHtml = await fetchPage(url, signal);
 
   // Normalize and extract sections
   const normalizedContent = normalizeContent(rawHtml);
@@ -250,6 +328,11 @@ async function executeMonitoringPipeline(pageId: number, url: string, logger?: L
 
   if (logger) {
     logger.debug({ pageId, contentHash, sectionCount: sections.length }, 'Content processed');
+  }
+
+  // Check if signal aborted before heavy operations
+  if (signal.aborted) {
+    throw new Error('JOB_TIMEOUT');
   }
 
   // Check for existing versions
@@ -327,6 +410,10 @@ async function executeMonitoringPipeline(pageId: number, url: string, logger?: L
  * Does not expose internal details or stack traces.
  */
 function classifyError(error: unknown): JobErrorType {
+  if (error instanceof Error && (error.message === 'JOB_TIMEOUT' || error.name === 'AbortError')) {
+    return 'JOB_TIMEOUT';
+  }
+
   if (!isApiError(error)) {
     return 'INTERNAL_ERROR';
   }
@@ -379,10 +466,10 @@ export async function getJob(jobId: string): Promise<MonitorJob | null> {
  * @returns Number of orphaned jobs cleaned up
  */
 export async function initializeJobService(logger?: Logger): Promise<number> {
-  const orphanedCount = await markOrphanedJobsFailed();
+  const orphanedCount = await runCrashRecovery();
 
   if (orphanedCount > 0 && logger) {
-    logger.info({ orphanedCount }, 'Marked orphaned PROCESSING jobs as FAILED');
+    logger.info({ orphanedCount }, 'Marked orphaned PROCESSING jobs as FAILED (CRASH_RECOVERY)');
   }
 
   return orphanedCount;

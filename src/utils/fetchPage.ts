@@ -5,15 +5,15 @@ import { FetchError, HttpError } from '../errors';
  * Fetch a page's HTML content
  *
  * @param url - URL to fetch (should be canonical)
+ * @param signal - AbortSignal to cancel the fetch
  * @returns HTML content as string
- * @throws FetchError - DNS failure, timeout, network error
- * @throws HttpError - Server returned 4xx or 5xx status
  */
-export async function fetchPage(url: string): Promise<string> {
+export async function fetchPage(url: string, signal?: AbortSignal): Promise<string> {
   try {
     const res = await axios.get<string>(url, {
       timeout: 10000, // 10 second timeout
       maxRedirects: 5,
+      signal,
       headers: {
         // Identify as a bot for transparency
         'User-Agent': 'PolicyDiffBot/1.0',

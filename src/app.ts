@@ -4,6 +4,7 @@ import { checkRoutes } from './routes/check.route';
 import { monitorRoutes } from './routes/monitor.route';
 import { batchRoutes } from './routes/batch.route';
 import { usageRoutes } from './routes/usage.route';
+import { internalRoutes } from './routes/internal.route';
 import { apiKeyAuthPlugin } from './plugins/apiKeyAuth';
 import { requestIdPlugin } from './plugins/requestId';
 import { requestLoggerPlugin } from './plugins/requestLogger';
@@ -136,5 +137,8 @@ app.register(batchRoutes, { prefix: '/v1' });
 
 // 8. Usage visibility routes under /v1 prefix
 app.register(usageRoutes, { prefix: '/v1' });
+
+// 9. Internal metrics routes under /v1 prefix
+app.register(internalRoutes, { prefix: '/v1' });
 
 export default app;

@@ -138,6 +138,22 @@ export class HttpError extends ApiError {
 }
 
 /**
+ * Conflict Error
+ * Thrown when a request conflicts with current server state
+ * (e.g. Idempotency-Key reuse with different payload)
+ *
+ * HTTP Status: 409 Conflict
+ */
+export class ConflictError extends ApiError {
+  readonly statusCode = 409;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'ConflictError';
+  }
+}
+
+/**
  * Type guard to check if an error is a custom API error
  */
 export function isApiError(error: unknown): error is ApiError {
