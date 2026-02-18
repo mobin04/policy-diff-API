@@ -1,5 +1,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { createMonitorJob, canAcceptNewJob, getJob } from '../services/monitorJob.service';
+import { checkIdempotency } from '../services/idempotency.service';
+import { generateHash } from '../utils/hash';
 import {
   MonitorRequestBody,
   MonitorJobCreatedResponse,
@@ -8,6 +10,7 @@ import {
   JobCompletedResponse,
   JobFailedResponse,
 } from '../types';
+import { ConflictError } from '../errors';
 
 /**
  * Route params type for job status endpoint
@@ -29,22 +32,13 @@ export async function createMonitorJobController(
   reply: FastifyReply,
 ): Promise<void> {
   const { url } = request.body || {};
+  const idempotencyKey = request.headers['idempotency-key'] as string | undefined;
 
   // Validate URL presence
   if (!url || typeof url !== 'string') {
     reply.code(400).send({
       error: 'BadRequest',
       message: 'URL is required',
-      request_id: request.requestId,
-    });
-    return;
-  }
-
-  // Check concurrency limit before creating job
-  if (!canAcceptNewJob()) {
-    reply.code(429).send({
-      error: 'TooManyRequests',
-      message: 'Server is at capacity. Please retry later.',
       request_id: request.requestId,
     });
     return;
@@ -59,15 +53,52 @@ export async function createMonitorJobController(
     return;
   }
 
-  // Create job and trigger async processing
-  const job = await createMonitorJob(request.apiKey.id, url, request.log);
+  try {
+    // Check idempotency first
+    const cachedResponse = await checkIdempotency(
+      request.apiKey.id,
+      idempotencyKey,
+      request.body as Record<string, unknown>,
+    );
 
-  const response: MonitorJobCreatedResponse = {
-    job_id: job.id,
-    status: job.status,
-  };
+    if (cachedResponse) {
+      reply.code(202).send(cachedResponse);
+      return;
+    }
 
-  reply.code(202).send(response);
+    // Check concurrency limit before creating job
+    if (!canAcceptNewJob()) {
+      reply.code(429).send({
+        error: 'TooManyRequests',
+        message: 'Server is at capacity. Please retry later.',
+        request_id: request.requestId,
+      });
+      return;
+    }
+
+    // Create job and trigger async processing (handles idempotency storage in transaction if key provided)
+    const requestHash = idempotencyKey ? generateHash(JSON.stringify(request.body)) : undefined;
+    const idempotencyOptions = idempotencyKey && requestHash ? { key: idempotencyKey, requestHash } : undefined;
+
+    const job = await createMonitorJob(request.apiKey.id, url, request.log, idempotencyOptions);
+
+    const response: MonitorJobCreatedResponse = {
+      job_id: job.id,
+      status: job.status,
+    };
+
+    reply.code(202).send(response);
+  } catch (error) {
+    if (error instanceof ConflictError) {
+      reply.code(409).send({
+        error: 'Conflict',
+        message: error.message,
+        request_id: request.requestId,
+      });
+    } else {
+      throw error;
+    }
+  }
 }
 
 /**

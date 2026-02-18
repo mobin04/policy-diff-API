@@ -2,7 +2,7 @@ import { DB } from '../db';
 import { getTierConfig } from '../config/tierConfig';
 import { QuotaExceededError, BatchLimitExceededError } from '../errors';
 
-type UsageRow = {
+export type UsageRow = {
   id: number;
   tier: 'FREE' | 'PRO' | 'ENTERPRISE';
   monthly_quota: number;
@@ -27,7 +27,7 @@ function firstDayOfNextMonth(now: Date): Date {
   return new Date(Date.UTC(nextYear, nextMonth, 1, 0, 0, 0, 0));
 }
 
-async function loadUsageRowForUpdate(
+export async function loadUsageRowForUpdate(
   client: typeof DB | { query: typeof DB.query },
   apiKeyId: number,
 ): Promise<UsageRow> {

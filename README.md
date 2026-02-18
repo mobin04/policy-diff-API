@@ -64,6 +64,12 @@ The system is built on a foundation of discrete, purposeful features:
 -   **Batch Monitoring**: Submit up to 20 URLs in a single request and poll aggregated batch status.
 -   **Concurrency Guard**: Limits the number of concurrent jobs to prevent system overload.
 -   **Deterministic Error Classification**: Maps internal application errors to a fixed set of public error types.
+-   **Production Hardening Layer**:
+    -   **Idempotency Keys**: Prevents duplicate job creation via `Idempotency-Key` header.
+    -   **Crash Recovery**: Automatically fails "stuck" jobs on server startup.
+    -   **Job Timeout Enforcement**: Hard 15s limit on job execution to prevent resource leaks.
+    -   **Per-API-Key Concurrency**: Fair-use limit of 2 concurrent jobs per API key.
+    -   **Internal Metrics**: Protected endpoint for real-time system observability.
 
 ## 3. System Architecture
 
@@ -109,9 +115,17 @@ To prevent system overload, an in-memory **concurrency guard** limits the number
 
 This concurrency guard is **not distributed**. It only works for a single Node.js instance. Running multiple instances of the application will lead to incorrect behavior, as each instance will have its own separate count of active jobs.
 
-**Restart Behavior:**
+**Restart Behavior & Crash Recovery:**
 
-If the server restarts, any jobs in the `PROCESSING` state are considered "orphaned." On startup, the system automatically finds these jobs and transitions them to `FAILED` with an `INTERNAL_ERROR` type, ensuring no jobs are stuck in an incomplete state.
+If the server restarts, any jobs in the `PROCESSING` state are considered "orphaned." On startup, the system automatically finds these jobs and transitions them to `FAILED` with a `CRASH_RECOVERY` type if they have been running for more than 5 minutes, ensuring no jobs are stuck in an incomplete state. This deterministic fail behavior prevents "zombie" jobs from persisting across restarts.
+
+**Job Timeout Enforcement:**
+
+To prevent resource exhaustion from hanging network connections or heavy processing, every job is assigned a maximum runtime of **15,000ms** (15 seconds). If a job exceeds this limit, the system automatically aborts the operation, releases the concurrency slot, and marks the job as `FAILED` with a `JOB_TIMEOUT` error type. This ensures the system remains responsive and prevents any single job from blocking the pipeline indefinitely.
+
+**Per-API-Key Concurrency Limit:**
+
+In addition to the global concurrency guard, the system enforces a per-API-key limit of **2 concurrent jobs**. If an API key already has 2 jobs in the `PROCESSING` state, any further jobs for that key will remain `PENDING` until a slot frees up. The system will automatically retry re-enqueuing these jobs after a 1000ms delay. This ensures fair resource distribution across all clients and prevents a single key from monopolizing the background workers.
 
 ## 5. Batch Monitoring
 
@@ -187,6 +201,10 @@ All endpoints are prefixed with `/v1`. Authentication is required via an `Author
 ### `POST /v1/monitor`
 
 Submits a URL for monitoring. Returns immediately with a job ID.
+
+**Idempotency-Key Header:**
+
+Clients can provide an `Idempotency-Key: <unique-string>` header to ensure request deduplication. If a record already exists for the given API key and idempotency key, the server will return the stored response if the request payload matches. If the payload differs, the server returns `409 Conflict` (`IDENTITY_KEY_REUSE_WITH_DIFFERENT_PAYLOAD`).
 
 **Example Request:**
 
@@ -336,6 +354,36 @@ Returns the current tier and usage metrics for the authenticated API key.
 }
 ```
 
+### `GET /v1/internal/metrics`
+
+A protected endpoint that provides system-wide performance and job metrics aggregated via SQL.
+
+**X-Internal-Token Header:**
+
+Clients must provide an `X-Internal-Token: <token>` header to access this endpoint. The token is configured in the environment variables.
+
+**Example Response (200 OK):**
+
+```json
+{
+  "total_jobs": 1250,
+  "completed_jobs": 1100,
+  "failed_jobs": 140,
+  "processing_jobs": 10,
+  "average_processing_time_ms": 4200,
+  "high_risk_count": 45,
+  "medium_risk_count": 120,
+  "low_risk_count": 935,
+  "failure_breakdown": {
+    "TIMEOUT": 20,
+    "DNS_ERROR": 15,
+    "CRASH_RECOVERY": 5,
+    "JOB_TIMEOUT": 10,
+    "INTERNAL_ERROR": 90
+  }
+}
+```
+
 ### `GET /health`
 
 A liveness probe that returns `200 OK` if the server is running.
@@ -417,6 +465,10 @@ Security is a core design principle, implemented through several layers:
 
 ## 12. Production Considerations
 
+-   **Deterministic Fail Strategy**: PolicyDiff prioritizes system reliability over automatic retries. If a server crashes or a job times out, it is marked as `FAILED` with an explicit reason (`CRASH_RECOVERY` or `JOB_TIMEOUT`), providing an auditable state.
+-   **Idempotency Model**: Request deduplication using the `Idempotency-Key` header ensures that clients can safely retry `POST` requests without side effects. The server hashes request bodies (SHA-256) to ensure identity consistency.
+-   **Per-Key Fairness**: The system limits each API key to 2 concurrent jobs. This prevents any single client from saturating the worker pool and ensures fairness across all users.
+-   **Internal Metrics Access**: Monitoring of system health is performed via a dedicated, protected metrics endpoint that aggregates job statistics directly from the database, minimizing overhead.
 -   **Single-Instance Async Limitation**: The current async job system relies on an in-memory concurrency guard and is **not safe for multi-instance deployments**. Running more than one instance will lead to incorrect concurrency management.
 -   **No Distributed Queue**: The system uses the `monitor_jobs` table in PostgreSQL as a simple job queue. This is sufficient for a single-node deployment but is not a scalable, distributed queue like Redis/BullMQ or RabbitMQ.
 -   **Batches Are Not Orchestrated**: Batches are a grouping mechanism (`monitor_batches`) over the existing job model. There is no cron, no external scheduler, and no distributed execution layer.

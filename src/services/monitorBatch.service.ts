@@ -1,3 +1,4 @@
+import { DB } from '../db';
 import { canonicalizeUrl } from '../utils/canonicalizeUrl';
 import { ensurePageExists } from '../repositories/page.repository';
 import { createJob } from '../repositories/monitorJob.repository';
@@ -7,10 +8,12 @@ import {
   getBatchJobCounts,
   listBatchJobs,
 } from '../repositories/monitorBatch.repository';
+import { saveIdempotencyRecord } from '../repositories/idempotency.repository';
 import { canAcceptNewJobs, enqueueMonitorJobProcessing } from './monitorJob.service';
 import { BatchStatusResponse, MonitorBatchCreatedResponse } from '../types';
-import { BadRequestError, TooManyRequestsError } from '../errors';
-import { consumeJobs } from './usage.service';
+import { BadRequestError, TooManyRequestsError, QuotaExceededError, BatchLimitExceededError } from '../errors';
+import { loadUsageRowForUpdate } from './usage.service';
+import { getTierConfig } from '../config/tierConfig';
 
 type Logger = {
   debug: (obj: object, msg: string) => void;
@@ -18,51 +21,99 @@ type Logger = {
   error: (obj: object, msg: string) => void;
 };
 
+/**
+ * Create a new monitor batch for multiple URLs in a single transaction.
+ */
 export async function createMonitorBatch(
   apiKeyId: number,
   urls: string[],
   logger?: Logger,
+  idempotencyOptions?: { key: string; requestHash: string },
 ): Promise<MonitorBatchCreatedResponse> {
   if (!Array.isArray(urls) || urls.length === 0) {
-    // Let Fastify schema handle most cases, but keep service defensive
     throw new BadRequestError('urls must be a non-empty array');
   }
 
-  // Canonicalize (validates) then deduplicate by canonical URL identity
+  // Deduplicate by canonical URL identity
   const canonicalUrls = urls.map((u) => canonicalizeUrl(u));
   const uniqueUrls = Array.from(new Set(canonicalUrls));
 
-  // Tier-based quota and batch-size enforcement (all-or-nothing)
-  await consumeJobs(apiKeyId, uniqueUrls.length, { enforceBatchLimit: true });
-
-  // Overload protection: allow queuing, but reject unbounded growth
+  // Overload protection (check before transaction)
   if (!canAcceptNewJobs(uniqueUrls.length)) {
     throw new TooManyRequestsError('Server is overloaded. Please retry later.');
   }
 
-  // Batch size is based on request size; uniqueUrls can be <= urls length
-  const batch = await createBatch(apiKeyId, uniqueUrls.length);
+  const client = await DB.connect();
+  try {
+    await client.query('BEGIN');
 
-  if (logger) {
-    logger.info({ batchId: batch.id, totalJobs: uniqueUrls.length }, 'Monitor batch created');
+    // 1. Quota and Tier check
+    const usage = await loadUsageRowForUpdate(client, apiKeyId);
+    const tierConfig = getTierConfig(usage.tier);
+
+    if (uniqueUrls.length > tierConfig.maxBatchSize) {
+      throw new BatchLimitExceededError('Batch size exceeds allowed tier limit');
+    }
+
+    if (usage.monthly_usage + uniqueUrls.length > usage.monthly_quota) {
+      throw new QuotaExceededError();
+    }
+
+    // Update usage
+    await client.query('UPDATE api_keys SET monthly_usage = monthly_usage + $2 WHERE id = $1', [
+      apiKeyId,
+      uniqueUrls.length,
+    ]);
+
+    // 2. Batch record creation
+    const batch = await createBatch(apiKeyId, uniqueUrls.length, client);
+
+    if (logger) {
+      logger.info({ batchId: batch.id, totalJobs: uniqueUrls.length }, 'Monitor batch created');
+    }
+
+    const jobs: MonitorBatchCreatedResponse['jobs'] = [];
+    const jobIds: string[] = [];
+
+    // 3. Sequential job creation within transaction
+    for (const url of uniqueUrls) {
+      const pageId = await ensurePageExists(url, client);
+      const job = await createJob(pageId, apiKeyId, batch.id, client);
+      jobs.push({ url, job_id: job.id, status: 'PENDING' });
+      jobIds.push(job.id);
+    }
+
+    const response: MonitorBatchCreatedResponse = {
+      batch_id: batch.id,
+      total_jobs: uniqueUrls.length,
+      jobs,
+    };
+
+    // 4. Idempotency storage (atomic with batch/job creation)
+    if (idempotencyOptions) {
+      await saveIdempotencyRecord(
+        apiKeyId,
+        idempotencyOptions.key,
+        idempotencyOptions.requestHash,
+        response as unknown as Record<string, unknown>,
+        client,
+      );
+    }
+
+    await client.query('COMMIT');
+
+    // Trigger async processing for all jobs (after commit)
+    for (const jobId of jobIds) {
+      enqueueMonitorJobProcessing(jobId, logger);
+    }
+
+    return response;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
   }
-
-  const jobs: MonitorBatchCreatedResponse['jobs'] = [];
-
-  for (const url of uniqueUrls) {
-    const pageId = await ensurePageExists(url);
-    const job = await createJob(pageId, batch.id);
-    jobs.push({ url, job_id: job.id, status: 'PENDING' });
-
-    // Trigger async processing (queued if at capacity)
-    enqueueMonitorJobProcessing(job.id, logger);
-  }
-
-  return {
-    batch_id: batch.id,
-    total_jobs: uniqueUrls.length,
-    jobs,
-  };
 }
 
 export async function getBatchStatus(batchId: string, apiKeyId: number): Promise<BatchStatusResponse | null> {

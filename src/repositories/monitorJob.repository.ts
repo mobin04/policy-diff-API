@@ -8,6 +8,7 @@ function rowToEntity(row: MonitorJobRow): MonitorJob {
   return {
     id: row.id,
     pageId: row.page_id,
+    apiKeyId: row.api_key_id ?? null,
     batchId: row.batch_id,
     status: row.status,
     result: row.result,
@@ -22,15 +23,23 @@ function rowToEntity(row: MonitorJobRow): MonitorJob {
  * Create a new monitor job with PENDING status
  *
  * @param pageId - ID of the page to monitor
+ * @param apiKeyId - ID of the API key creating the job
  * @param batchId - Optional batch ID to group this job
+ * @param client - Optional DB client for transaction
  * @returns Created job entity
  */
-export async function createJob(pageId: number, batchId: string | null = null): Promise<MonitorJob> {
-  const result = await DB.query<MonitorJobRow>(
-    `INSERT INTO monitor_jobs (page_id, batch_id, status)
-     VALUES ($1, $2, 'PENDING')
+export async function createJob(
+  pageId: number,
+  apiKeyId: number,
+  batchId: string | null = null,
+  client?: typeof DB | { query: typeof DB.query },
+): Promise<MonitorJob> {
+  const db = client || DB;
+  const result = await db.query<MonitorJobRow>(
+    `INSERT INTO monitor_jobs (page_id, api_key_id, batch_id, status)
+     VALUES ($1, $2, $3, 'PENDING')
      RETURNING *`,
-    [pageId, batchId],
+    [pageId, apiKeyId, batchId],
   );
 
   return rowToEntity(result.rows[0]);
@@ -137,6 +146,21 @@ export async function getJobsByStatus(status: JobStatus): Promise<MonitorJob[]> 
 }
 
 /**
+ * Count active (PROCESSING) jobs for a specific API key
+ *
+ * @param apiKeyId - ID of the API key
+ * @returns Count of jobs currently in PROCESSING state
+ */
+export async function getActiveJobCountForKey(apiKeyId: number): Promise<number> {
+  const result = await DB.query<{ count: string }>(
+    "SELECT COUNT(*) as count FROM monitor_jobs WHERE status = 'PROCESSING' AND api_key_id = $1",
+    [apiKeyId],
+  );
+
+  return parseInt(result.rows[0].count, 10);
+}
+
+/**
  * Mark orphaned PROCESSING jobs as FAILED
  * Called on server startup to clean up jobs that were interrupted
  *
@@ -145,8 +169,9 @@ export async function getJobsByStatus(status: JobStatus): Promise<MonitorJob[]> 
 export async function markOrphanedJobsFailed(): Promise<number> {
   const result = await DB.query(
     `UPDATE monitor_jobs
-     SET status = 'FAILED', error_type = 'INTERNAL_ERROR', completed_at = NOW()
-     WHERE status = 'PROCESSING'`,
+     SET status = 'FAILED', error_type = 'CRASH_RECOVERY', completed_at = NOW()
+     WHERE status = 'PROCESSING'
+     AND started_at < NOW() - INTERVAL '5 minutes'`,
   );
 
   return result.rowCount ?? 0;

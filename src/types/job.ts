@@ -30,7 +30,9 @@ export type JobErrorType =
   | 'TIMEOUT'
   | 'DNS_FAILURE'
   | 'CONNECTION_ERROR'
-  | 'INTERNAL_ERROR';
+  | 'INTERNAL_ERROR'
+  | 'CRASH_RECOVERY'
+  | 'JOB_TIMEOUT';
 
 /**
  * Monitor job entity as stored in database
@@ -38,6 +40,7 @@ export type JobErrorType =
 export type MonitorJob = {
   id: string;
   pageId: number;
+  apiKeyId: number | null;
   batchId: string | null;
   status: JobStatus;
   result: DiffResult | null;
@@ -53,6 +56,7 @@ export type MonitorJob = {
 export type MonitorJobRow = {
   id: string;
   page_id: number;
+  api_key_id?: number | null;
   batch_id: string | null;
   status: JobStatus;
   result: DiffResult | null;
