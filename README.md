@@ -43,7 +43,10 @@ The system is built on a foundation of discrete, purposeful features:
 -   **Section-Level Hashing**: Generates a SHA-256 hash for each section's content, enabling rapid detection of modifications.
 -   **Structural Diff Engine**: Identifies changes as `ADDED`, `REMOVED`, or `MODIFIED` at the section level. Sections are matched using exact title match first. If an exact match fails, deterministic Levenshtein similarity matching is applied with a threshold of 0.85 to prevent minor title edits from being misclassified as `REMOVED` + `ADDED`. Fuzzy title matches undergo full hash comparison and meaningful change validation before being classified as `MODIFIED`.
 -   **Meaningful Change Threshold**: Ignores modifications below a certain threshold (e.g., minor punctuation changes) to reduce noise.
--   **Rule-Based Risk Engine**: Classifies changes using a predefined, deterministic set of keywords and rules.
+-   **Rule-Based Risk Engine**: Classifies changes using an expanded deterministic keyword coverage aligned with modern compliance frameworks (GDPR, CCPA, arbitration, indemnification, biometric data, jurisdiction clauses).
+    -   **HIGH risk** includes legal rights waivers, sensitive regulated data, and aggressive unilateral clauses.
+    -   **MEDIUM risk** includes advertising profiling, jurisdictional changes, and operational legal clauses.
+    -   **LOW risk removal** handles informational sections like introductions or contact information.
 -   **Global Risk Aggregation**: Aggregates section-level risks into a single `LOW`, `MEDIUM`, or `HIGH` risk score for the entire document change.
 -   **API Key Authentication**: Secures all endpoints with bearer token authentication.
 -   **Dev vs. Prod Keys**: Supports separate key environments (`pd_dev_...`, `pd_prod_...`) for safe development and testing.
@@ -194,7 +197,7 @@ The core pipeline executes in the following order:
 4.  **Hash Comparison**: The normalized content is hashed. If this hash matches the hash of the most recent `page_version`, the process exits early ("No meaningful change detected").
 4.  **Section Extraction**: The HTML is parsed, and content is grouped into sections based on `<h1>`, `<h2>`, and `<h3>` tags. Each section's content is also hashed.
 5.  **Structural Diff**: The new sections are compared to the sections from the previous version. The engine identifies `ADDED`, `REMOVED`, and `MODIFIED` sections. Minor modifications are ignored.
-6.  **Risk Classification**: Each change is passed through the rule-based risk engine, which assigns a risk level (`LOW`, `MEDIUM`, `HIGH`) and a reason based on keyword matches.
+6.  **Risk Classification**: Each change is passed through the expanded deterministic risk engine, which assigns a risk level (`LOW`, `MEDIUM`, `HIGH`) and a reason based on keyword matches or section type (e.g. low-impact removal of informational sections).
 7.  **Result Storage**: If changes were found, a new record is created in `page_versions`. The final analysis is stored in the `monitor_jobs` table's `result` column.
 8.  **Job Completion**: The job status is updated to `COMPLETED` or `FAILED`.
 
@@ -547,7 +550,7 @@ The following environment variables must be configured in a `.env.config` file:
 
 ## 15. Design Principles
 
--   **Deterministic over Probabilistic**: Outputs must be predictable and repeatable.
+-   **Deterministic over Probabilistic**: Risk classification uses expanded deterministic keyword coverage (GDPR, CCPA, arbitration, etc.) instead of probabilistic scoring.
 -   **Reliability over Features**: System stability and data integrity are paramount.
 -   **Signal Quality over Volume**: Prioritize meaningful, actionable alerts over noisy, low-value ones.
 -   **No AI Dependency**: Avoid reliance on non-deterministic "black box" models.

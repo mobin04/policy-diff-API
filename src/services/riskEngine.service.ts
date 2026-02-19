@@ -1,6 +1,8 @@
 import { Change, RiskedChange, RiskLevel, Section } from '../types';
+import { normalizeText } from './differ.service';
 
 const HIGH_RISK_KEYWORDS = [
+  // Existing
   'share data',
   'sell data',
   'third party',
@@ -10,9 +12,52 @@ const HIGH_RISK_KEYWORDS = [
   'arbitration',
   'no refund',
   'automatic renewal',
+
+  // Legal Rights (Critical)
+  'class action waiver',
+  'jury trial waiver',
+  'indemnification',
+  'indemnify',
+  'liquidated damages',
+
+  // Sensitive Data (Highly Regulated)
+  'biometric',
+  'genetic data',
+  'precise geolocation',
+  'gps',
+  'health data',
+  'medical records',
+  'financial account',
+
+  // Aggressive Clauses
+  'sole discretion',
+  'without notice',
 ];
 
-const MEDIUM_RISK_KEYWORDS = ['analytics', 'cookies', 'retention', 'billing', 'subscription', 'notice period'];
+const MEDIUM_RISK_KEYWORDS = [
+  // Existing
+  'analytics',
+  'cookies',
+  'retention',
+  'billing',
+  'subscription',
+  'notice period',
+
+  // Data Usage
+  'targeted advertising',
+  'cross-context behavioral advertising',
+  'profiling',
+  'marketing communications',
+
+  // Legal / Jurisdiction
+  'governing law',
+  'venue',
+  'jurisdiction',
+  'force majeure',
+  'severability',
+];
+
+const LOW_RISK_TITLES = ['introduction', 'preamble', 'contact', 'about us', 'definitions'];
 
 const HIGH_RISK_TITLES = ['refund', 'data', 'privacy', 'liability'];
 
@@ -55,8 +100,17 @@ function evaluateChange(change: Change, newSections: Section[]): RiskedChange {
       risk = 'HIGH';
       reason = 'Critical section removed';
     } else {
-      risk = 'MEDIUM';
-      reason = 'Section removed';
+      const normalizedTitle = normalizeText(section);
+
+      const isLowRiskRemoval = LOW_RISK_TITLES.some((title) => normalizedTitle.includes(title));
+
+      if (isLowRiskRemoval) {
+        risk = 'LOW';
+        reason = 'Low-impact informational section removed';
+      } else {
+        risk = 'MEDIUM';
+        reason = 'Section removed';
+      }
     }
   }
 
