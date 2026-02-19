@@ -36,7 +36,7 @@ The system is intentionally **deterministic** and avoids probabilistic AI models
 
 The system is built on a foundation of discrete, purposeful features:
 
--   **Snapshot System**: Creates versioned snapshots of web pages over time.
+-   **Snapshot System**: Validates fetched content before versioning. Detects and rejects JS-heavy SPA shells, bot-blocked pages, or insufficient meaningful content before snapshotting.
 -   **HTML Normalization**: Strips scripts, styles, and other non-content tags to isolate meaningful text.
 -   **Canonicalized URLs**: Normalizes URLs to prevent duplicate tracking of the same page (e.g., `http://` vs `https://`, trailing slashes, query parameters).
 -   **Section Extraction**: Parses HTML into logical sections using `<h1>`, `<h2>`, and `<h3>` tags as delimiters.
@@ -186,8 +186,12 @@ The core pipeline executes in the following order:
 4.  Client polls `GET /v1/batches/:batchId` for aggregated progress and per-job status.
 
 1.  **URL Canonicalization**: The input URL is cleaned: protocol is set to `https`, query parameters and fragments are removed, and the path is normalized.
-2.  **Snapshot Fetch**: The system fetches the raw HTML content from the canonical URL.
-3.  **Hash Comparison**: The normalized content is hashed. If this hash matches the hash of the most recent `page_version`, the process exits early ("No meaningful change detected").
+2.  **Snapshot Fetch**: The system fetches the raw HTML content from the canonical URL with realistic browser headers and redirect handling.
+3.  **Content Validation**: The system validates the fetched content before snapshotting. It rejects:
+    -   **Dynamic JS-rendered pages**: Detected via SPA shells (e.g., `#root`, `#app`) or high script-to-text ratios.
+    -   **Bot-protected or blocked pages**: Detected via common patterns (e.g., CAPTCHA, Cloudflare, access denied messages).
+    -   **Insufficient content**: Pages with less than 300 characters of meaningful text.
+4.  **Hash Comparison**: The normalized content is hashed. If this hash matches the hash of the most recent `page_version`, the process exits early ("No meaningful change detected").
 4.  **Section Extraction**: The HTML is parsed, and content is grouped into sections based on `<h1>`, `<h2>`, and `<h3>` tags. Each section's content is also hashed.
 5.  **Structural Diff**: The new sections are compared to the sections from the previous version. The engine identifies `ADDED`, `REMOVED`, and `MODIFIED` sections. Minor modifications are ignored.
 6.  **Risk Classification**: Each change is passed through the rule-based risk engine, which assigns a risk level (`LOW`, `MEDIUM`, `HIGH`) and a reason based on keyword matches.
@@ -454,6 +458,9 @@ The system uses a deterministic error classification model. Internal application
 -   `TIMEOUT`: The request to the target server timed out.
 -   `DNS_FAILURE`: The domain name could not be resolved.
 -   `CONNECTION_ERROR`: The connection was refused or reset by the target server.
+-   `UNSUPPORTED_DYNAMIC_PAGE`: The page appears to rely on client-side rendering (SPA).
+-   `PAGE_ACCESS_BLOCKED`: Access to the target page was blocked (e.g. WAF, CAPTCHA).
+-   `INVALID_PAGE_CONTENT`: The fetched content has insufficient meaningful text.
 -   `INTERNAL_ERROR`: An unexpected server-side error occurred.
 
 All errors are logged with a `request_id` to correlate client reports with server-side logs for efficient debugging.

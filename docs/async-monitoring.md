@@ -188,6 +188,9 @@ X-API-Key: pdiff_xxx
 | TIMEOUT | Request timed out waiting for response |
 | DNS_FAILURE | Domain could not be resolved |
 | CONNECTION_ERROR | Connection refused or reset by server |
+| UNSUPPORTED_DYNAMIC_PAGE | Page relies on client-side rendering (SPA) |
+| PAGE_ACCESS_BLOCKED | Access blocked or requires verification (WAF, CAPTCHA) |
+| INVALID_PAGE_CONTENT | Insufficient meaningful content detected |
 | INTERNAL_ERROR | Unexpected server error |
 
 ## Concurrency Model
