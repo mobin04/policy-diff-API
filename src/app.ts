@@ -6,9 +6,10 @@ import { batchRoutes } from './routes/batch.route';
 import { usageRoutes } from './routes/usage.route';
 import { internalRoutes } from './routes/internal.route';
 import { apiKeyAuthPlugin } from './plugins/apiKeyAuth';
+import { globalRateLimitPlugin } from './plugins/globalRateLimit';
 import { requestIdPlugin } from './plugins/requestId';
 import { requestLoggerPlugin } from './plugins/requestLogger';
-import { NODE_ENV } from './config';
+import { NODE_ENV, LOG_LEVEL } from './config';
 import { ErrorResponse } from './types';
 import { ApiError, isApiError } from './errors';
 
@@ -27,7 +28,7 @@ const isProduction = NODE_ENV === 'production';
  */
 const app = Fastify({
   logger: {
-    level: isProduction ? 'info' : 'debug',
+    level: LOG_LEVEL,
     // In production, output JSON for log aggregators
     // In development, use pino-pretty if available
     transport: isProduction
@@ -113,6 +114,9 @@ app.setErrorHandler((error: Error, request: FastifyRequest, reply: FastifyReply)
 // ==========================================
 // Plugin Registration Order Matters!
 // ==========================================
+
+// 0. Global Rate Limiter - protect server first
+app.register(globalRateLimitPlugin);
 
 // 1. Request ID - must be first to ensure all logs have request ID
 app.register(requestIdPlugin);

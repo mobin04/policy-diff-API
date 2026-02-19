@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import fp from 'fastify-plugin';
 import { findApiKeyByRawKey, incrementUsage } from '../repositories/apiKey.repository';
-import { NODE_ENV } from '../config';
+import { NODE_ENV, PER_KEY_RATE_LIMIT } from '../config';
 import { AuthErrorResponse } from '../types';
 
 /**
@@ -90,9 +90,10 @@ async function apiKeyAuthHook(request: FastifyRequest, reply: FastifyReply): Pro
   }
 
   // Check rate limit
-  // Note: This is a simple check. For high-concurrency scenarios,
-  // consider using SELECT FOR UPDATE or Redis-based counters
-  if (apiKey.usageCount >= apiKey.rateLimit) {
+  // System-wide PER_KEY_RATE_LIMIT caps the individual key's limit if it's more restrictive
+  const effectiveLimit = Math.min(apiKey.rateLimit, PER_KEY_RATE_LIMIT);
+  
+  if (apiKey.usageCount >= effectiveLimit) {
     sendAuthError(reply, 429, 'Too Many Requests', 'Rate limit exceeded');
     return;
   }

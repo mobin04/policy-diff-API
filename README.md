@@ -540,6 +540,61 @@ The following environment variables must be configured in a `.env.config` file:
 -   **Billing Integration**: Integrate with a billing provider to map tiers and quotas to paid plans, including overage handling and detailed invoicing.
 -   **Plan-Based Feature Gating**: Extend the tier model to gate advanced features (e.g., higher batch sizes, webhook delivery guarantees, historical diff depth) based on plan.
 
+## Production Deployment
+
+PolicyDiff is designed for infrastructure-grade reliability. When deploying to production, follow these requirements and procedures.
+
+### Required Environment Variables
+
+| Variable | Description | Requirement |
+| :--- | :--- | :--- |
+| `DATABASE_URL` | PostgreSQL connection string | Required |
+| `API_SECRET` | Secret for internal operations | Required (min 32 chars in prod) |
+| `INTERNAL_METRICS_TOKEN` | Token for `/internal/metrics` | Required |
+| `NODE_ENV` | Environment mode | `production` |
+| `PORT` | Listening port | Required |
+| `GLOBAL_RATE_LIMIT` | Requests per minute (all users) | Default: 1000 |
+| `PER_KEY_RATE_LIMIT` | Requests per minute (per API key) | Default: 100 |
+
+### Deployment Checklist
+
+1.  **Node.js Version**: Use Node.js v20 or later.
+2.  **Database**: Ensure PostgreSQL v14+ is available.
+3.  **Migrations**: The server automatically runs pending migrations at startup. Readiness probe will fail until migrations are complete.
+4.  **Health Checks**:
+    -   `/health`: Liveness probe. Returns 200 if process is alive.
+    -   `/ready`: Readiness probe. Checks DB connection, migration status, and recovery service completion.
+5.  **Graceful Shutdown**: The server listens for `SIGTERM` and `SIGINT`. It will stop accepting new requests and wait up to 10 seconds for active monitor jobs to complete before closing DB connections and exiting.
+6.  **Logging**: In production, logs are output in structured JSON format (Pino) to `stdout`. Use a log aggregator (CloudWatch, Datadog, ELK) to collect them.
+
+## First Integration Guide
+
+Welcome to PolicyDiff. Follow this guide to integrate the compliance signal engine into your workflow.
+
+### 1. Obtain an API Key
+Currently, API keys are provisioned manually. Contact the administrator to request a key for your environment (`dev` or `prod`).
+
+### 2. Secure Storage
+Store your API key in a secure secret manager (e.g., AWS Secrets Manager, HashiCorp Vault). Never hardcode keys or commit them to source control.
+
+### 3. Request Deduplication
+For critical monitoring requests, always provide an `Idempotency-Key` header.
+- Use a unique UUID or a hash of your internal business event ID.
+- Example: `Idempotency-Key: event_uuid_123`
+
+### 4. Batch Monitoring Integration
+When monitoring multiple pages, use the batch endpoint to minimize overhead.
+- Submit up to 20 URLs via `POST /v1/monitor/batch`.
+- Poll the `batch_id` via `GET /v1/batches/:id` to track overall progress.
+
+### 5. Monitor Usage
+Track your quota consumption via `GET /v1/usage`.
+- Plan for resets: Quotas reset on the 1st of every month at `00:00:00Z`.
+
+### 6. Known Limitations
+- **Single Instance**: The current concurrency guard and rate limiting are in-memory. Horizontal scaling is not supported in the current version.
+- **Polling**: Real-time webhooks are on the roadmap; polling is currently required for job results.
+
 ## 17. License
 
 This project is licensed under the ISC License.

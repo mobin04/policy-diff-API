@@ -1,9 +1,81 @@
+/**
+ * Environment Configuration and Validation Layer
+ *
+ * This file centralizes all environment variable access and enforces
+ * strict validation at startup. If any required variables are missing
+ * or invalid, the process will fail fast with a clear error.
+ *
+ * Security:
+ * - No default secrets in production.
+ * - Minimum length requirements for secrets.
+ */
+
 import dotenv from 'dotenv';
+import path from 'path';
 
-dotenv.config({ path: '.env.config' });
+// Load .env.config file
+dotenv.config({ path: path.join(process.cwd(), '.env.config') });
 
-export const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
-export const DATABASE_URL = process.env.DATABASE_URL;
-export const HOST = '0.0.0.0';
+/**
+ * Validates that an environment variable exists and is not empty.
+ * @throws Error if variable is missing.
+ */
+function getRequiredEnv(key: string): string {
+  const value = process.env[key];
+  if (!value || value.trim() === '') {
+    throw new Error(`CRITICAL CONFIG ERROR: Missing required environment variable: ${key}`);
+  }
+  return value;
+}
+
+/**
+ * Validates that an environment variable is a valid number.
+ */
+function getRequiredInt(key: string, defaultValue?: number): number {
+  const value = process.env[key];
+  if (!value && defaultValue !== undefined) return defaultValue;
+  const parsed = parseInt(value || '', 10);
+  if (isNaN(parsed)) {
+    throw new Error(`CRITICAL CONFIG ERROR: Environment variable ${key} must be a valid integer.`);
+  }
+  return parsed;
+}
+
+// Environment Modes
 export const NODE_ENV = process.env.NODE_ENV || 'development';
-export const INTERNAL_METRICS_TOKEN = process.env.INTERNAL_METRICS_TOKEN || 'dev-metrics-token';
+export const IS_PRODUCTION = NODE_ENV === 'production';
+export const IS_DEVELOPMENT = NODE_ENV === 'development';
+export const IS_TEST = NODE_ENV === 'test';
+
+// Required Core Configuration
+export const PORT = getRequiredInt('PORT', 3000);
+export const DATABASE_URL = getRequiredEnv('DATABASE_URL');
+export const API_SECRET = getRequiredEnv('API_SECRET');
+export const INTERNAL_METRICS_TOKEN = getRequiredEnv('INTERNAL_METRICS_TOKEN');
+
+// Rate Limiting (Configurable via env)
+export const GLOBAL_RATE_LIMIT = getRequiredInt('GLOBAL_RATE_LIMIT', 1000);
+export const PER_KEY_RATE_LIMIT = getRequiredInt('PER_KEY_RATE_LIMIT', 100);
+
+// Logging
+export const LOG_LEVEL = process.env.LOG_LEVEL || (IS_PRODUCTION ? 'info' : 'debug');
+
+// Server
+export const HOST = '0.0.0.0';
+
+/**
+ * Perform additional secure configuration enforcement for production.
+ */
+export function validateProductionConfig() {
+  if (!IS_PRODUCTION) return;
+
+  // 1. Ensure API_SECRET is secure (>= 32 characters)
+  if (API_SECRET.length < 32) {
+    throw new Error('SECURE CONFIG ERROR: API_SECRET must be at least 32 characters long in production.');
+  }
+
+  // 2. Ensure INTERNAL_METRICS_TOKEN is not using a default value
+  if (INTERNAL_METRICS_TOKEN === 'dev-metrics-token') {
+    throw new Error('SECURE CONFIG ERROR: INTERNAL_METRICS_TOKEN cannot use default value in production.');
+  }
+}
