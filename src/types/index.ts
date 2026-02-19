@@ -11,9 +11,16 @@ export type Section = {
 
 export type ChangeType = 'ADDED' | 'REMOVED' | 'MODIFIED';
 
+export interface DiffDetail {
+  value: string;
+  added: boolean;
+  removed: boolean;
+}
+
 export type Change = {
   section: string;
   type: ChangeType;
+  details?: DiffDetail[];
 };
 
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
@@ -23,6 +30,7 @@ export type RiskedChange = {
   type: ChangeType;
   risk: RiskLevel;
   reason: string;
+  details?: DiffDetail[];
 };
 
 /**

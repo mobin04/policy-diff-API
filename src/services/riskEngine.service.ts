@@ -65,6 +65,7 @@ function evaluateChange(change: Change, newSections: Section[]): RiskedChange {
     type,
     risk,
     reason,
+    details: change.details,
   };
 }
 
