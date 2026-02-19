@@ -154,6 +154,45 @@ export class ConflictError extends ApiError {
 }
 
 /**
+ * Unsupported Dynamic Page Error
+ * Thrown when a page appears to rely on client-side rendering (SPA).
+ */
+export class UnsupportedDynamicPageError extends ApiError {
+  readonly statusCode = 422; // Unprocessable Entity
+
+  constructor(message = 'Page appears to rely on client-side rendering') {
+    super(message);
+    this.name = 'UNSUPPORTED_DYNAMIC_PAGE';
+  }
+}
+
+/**
+ * Page Access Blocked Error
+ * Thrown when a page access is blocked (WAF, CAPTCHA, etc.).
+ */
+export class PageAccessBlockedError extends ApiError {
+  readonly statusCode = 403;
+
+  constructor(message = 'Page access blocked or requires verification') {
+    super(message);
+    this.name = 'PAGE_ACCESS_BLOCKED';
+  }
+}
+
+/**
+ * Invalid Page Content Error
+ * Thrown when the fetched page has insufficient meaningful content.
+ */
+export class InvalidPageContentError extends ApiError {
+  readonly statusCode = 422;
+
+  constructor(message = 'Insufficient meaningful content detected') {
+    super(message);
+    this.name = 'INVALID_PAGE_CONTENT';
+  }
+}
+
+/**
  * Type guard to check if an error is a custom API error
  */
 export function isApiError(error: unknown): error is ApiError {

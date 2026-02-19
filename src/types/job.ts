@@ -32,7 +32,10 @@ export type JobErrorType =
   | 'CONNECTION_ERROR'
   | 'INTERNAL_ERROR'
   | 'CRASH_RECOVERY'
-  | 'JOB_TIMEOUT';
+  | 'JOB_TIMEOUT'
+  | 'UNSUPPORTED_DYNAMIC_PAGE'
+  | 'PAGE_ACCESS_BLOCKED'
+  | 'INVALID_PAGE_CONTENT';
 
 /**
  * Monitor job entity as stored in database

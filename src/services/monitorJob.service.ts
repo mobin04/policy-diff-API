@@ -18,7 +18,16 @@ import {
 } from '../repositories/monitorJob.repository';
 import { saveIdempotencyRecord } from '../repositories/idempotency.repository';
 import { MonitorJob, JobErrorType, DiffResult, Section } from '../types';
-import { InvalidUrlError, FetchError, HttpError, isApiError, QuotaExceededError } from '../errors';
+import {
+  InvalidUrlError,
+  FetchError,
+  HttpError,
+  isApiError,
+  QuotaExceededError,
+  UnsupportedDynamicPageError,
+  PageAccessBlockedError,
+  InvalidPageContentError,
+} from '../errors';
 import { loadUsageRowForUpdate } from './usage.service';
 import { runCrashRecovery } from './startupRecoveryService';
 
@@ -437,7 +446,22 @@ function classifyError(error: unknown): JobErrorType {
   }
 
   if (error instanceof HttpError) {
+    if (error.upstreamStatus === 429 || error.upstreamStatus === 403) {
+      return 'PAGE_ACCESS_BLOCKED';
+    }
     return 'HTTP_ERROR';
+  }
+
+  if (error instanceof UnsupportedDynamicPageError) {
+    return 'UNSUPPORTED_DYNAMIC_PAGE';
+  }
+
+  if (error instanceof PageAccessBlockedError) {
+    return 'PAGE_ACCESS_BLOCKED';
+  }
+
+  if (error instanceof InvalidPageContentError) {
+    return 'INVALID_PAGE_CONTENT';
   }
 
   return 'INTERNAL_ERROR';
