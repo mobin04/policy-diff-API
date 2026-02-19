@@ -125,7 +125,7 @@ function validateFetchedContent(html: string): void {
   }
 
   // Minimum Content Safety Check: Stripping scripts/styles for clean text length check
-  // cheerio's .text() already excludes script/style content if used correctly, 
+  // cheerio's .text() already excludes script/style content if used correctly,
   // but let's be explicit and remove them for the final length check.
   $('script, style').remove();
   const cleanTextLength = $('body').text().trim().length;

@@ -23,7 +23,7 @@ const TITLE_SIMILARITY_THRESHOLD = 0.85;
  * Normalize text for comparison
  * Strips punctuation and extra whitespace to focus on actual content
  */
-function normalizeText(text: string): string {
+export function normalizeText(text: string): string {
   return (
     text
       .toLowerCase()
