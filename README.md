@@ -41,7 +41,7 @@ The system is built on a foundation of discrete, purposeful features:
 -   **Canonicalized URLs**: Normalizes URLs to prevent duplicate tracking of the same page (e.g., `http://` vs `https://`, trailing slashes, query parameters).
 -   **Section Extraction**: Parses HTML into logical sections using `<h1>`, `<h2>`, and `<h3>` tags as delimiters.
 -   **Section-Level Hashing**: Generates a SHA-256 hash for each section's content, enabling rapid detection of modifications.
--   **Structural Diff Engine**: Identifies changes as `ADDED`, `REMOVED`, or `MODIFIED` at the section level, not just the line level.
+-   **Structural Diff Engine**: Identifies changes as `ADDED`, `REMOVED`, or `MODIFIED` at the section level. Sections are matched using exact title match first. If an exact match fails, deterministic Levenshtein similarity matching is applied with a threshold of 0.85 to prevent minor title edits from being misclassified as `REMOVED` + `ADDED`.
 -   **Meaningful Change Threshold**: Ignores modifications below a certain threshold (e.g., minor punctuation changes) to reduce noise.
 -   **Rule-Based Risk Engine**: Classifies changes using a predefined, deterministic set of keywords and rules.
 -   **Global Risk Aggregation**: Aggregates section-level risks into a single `LOW`, `MEDIUM`, or `HIGH` risk score for the entire document change.
