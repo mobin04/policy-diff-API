@@ -171,19 +171,25 @@ export function diffSections(oldSections: Section[], newSections: Section[]): Ch
       const oldSection = unmatchedOldSections.get(bestMatchTitle)!;
       unmatchedOldSections.delete(bestMatchTitle);
 
-      // Similarity threshold met -> treat as MODIFIED
-      const diffResult = calculateChangeRatio(oldSection.content, newSection.content);
-      const details: DiffDetail[] = diffResult.diff.map((part) => ({
-        value: part.value,
-        added: part.added === true,
-        removed: part.removed === true,
-      }));
+      // Similarity threshold met -> check content
+      if (oldSection.hash !== newSection.hash) {
+        const meaningfulChange = getMeaningfulChange(oldSection.content, newSection.content);
 
-      changes.push({
-        section: newSection.title,
-        type: 'MODIFIED',
-        details,
-      });
+        if (meaningfulChange.isMeaningful && meaningfulChange.diff) {
+          const details: DiffDetail[] = meaningfulChange.diff.map((part) => ({
+            value: part.value,
+            added: part.added === true,
+            removed: part.removed === true,
+          }));
+
+          changes.push({
+            section: newSection.title,
+            type: 'MODIFIED',
+            details,
+          });
+        }
+      }
+      // If hash identical or change not meaningful, treat as no change
     } else {
       // No match found -> ADDED
       changes.push({ section: newSection.title, type: 'ADDED' });

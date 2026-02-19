@@ -6,7 +6,13 @@ import { generateHash } from '../utils/hash';
 import { canonicalizeUrl } from '../utils/canonicalizeUrl';
 import { diffSections } from './differ.service';
 import { analyzeRisk } from './riskEngine.service';
-import { acquireJob, releaseJob, canAcquireJob, getActiveJobCount, getMaxConcurrentJobs } from '../utils/concurrencyGuard';
+import {
+  acquireJob,
+  releaseJob,
+  canAcquireJob,
+  getActiveJobCount,
+  getMaxConcurrentJobs,
+} from '../utils/concurrencyGuard';
 import { ensurePageExists } from '../repositories/page.repository';
 import {
   createJob,
@@ -282,9 +288,10 @@ export async function processMonitorJob(jobId: string, logger?: Logger): Promise
         logger.info({ jobId, status: 'COMPLETED' }, 'Job completed successfully');
       }
     } catch (pipelineError) {
-      const errorType = pipelineError instanceof Error && pipelineError.message === 'JOB_TIMEOUT'
-        ? 'JOB_TIMEOUT'
-        : classifyError(pipelineError);
+      const errorType =
+        pipelineError instanceof Error && pipelineError.message === 'JOB_TIMEOUT'
+          ? 'JOB_TIMEOUT'
+          : classifyError(pipelineError);
 
       await markJobFailed(jobId, errorType as JobErrorType);
 
