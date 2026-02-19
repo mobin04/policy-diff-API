@@ -290,12 +290,29 @@ Retrieves the status and result of a monitoring job.
         "section": "data sharing with third parties",
         "type": "MODIFIED",
         "risk": "HIGH",
-        "reason": "High risk keyword detected in content"
+        "reason": "High risk keyword detected in content",
+        "details": [
+          { "value": "We may share your data with ", "added": false, "removed": false },
+          { "value": "partners", "added": false, "removed": true },
+          { "value": "unaffiliated third parties", "added": true, "removed": false },
+          { "value": ".", "added": false, "removed": false }
+        ]
       }
     ]
   }
 }
 ```
+
+**Diff Details Structure:**
+
+For `MODIFIED` sections, the `details` field provides a granular word-level diff (Myers algorithm):
+
+- `value`: The text segment.
+- `added`: `true` if the segment was newly inserted.
+- `removed`: `true` if the segment was deleted.
+- If both are `false`, the segment represents unchanged context.
+- They are never both `true`.
+- The output is deterministic and word-based.
 
 **Example Response (Failed):**
 

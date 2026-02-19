@@ -1,5 +1,5 @@
-import { Section, Change } from '../types';
-import { diffWords } from 'diff';
+import { Section, Change, DiffDetail } from '../types';
+import { diffWords, Change as DiffChange } from 'diff';
 
 /**
  * WHY SMALL-CHANGE THRESHOLD REDUCES NOISE:
@@ -29,18 +29,21 @@ function normalizeText(text: string): string {
 }
 
 /**
- * Calculate change ratio between two strings
+ * Calculate change ratio and return diff parts between two strings
  * Uses word-based Myers diff algorithm using diff library.
  * Improves insertion/deletion accuracy and prevents false high ratios from character shifting.
  *
- * @returns Ratio of change (0.0 = identical, 1.0 = completely different)
+ * @returns Object with ratio of change and the diff parts
  */
-function calculateChangeRatio(oldText: string, newText: string): number {
+function calculateChangeRatio(
+  oldText: string,
+  newText: string,
+): { ratio: number; diff: DiffChange[] } {
   const normalizedOld = normalizeText(oldText);
   const normalizedNew = normalizeText(newText);
 
   if (normalizedOld.length === 0) {
-    return 1;
+    return { ratio: 1, diff: [{ value: normalizedNew, added: true, removed: false, count: 1 }] };
   }
 
   const diff = diffWords(normalizedOld, normalizedNew);
@@ -55,15 +58,24 @@ function calculateChangeRatio(oldText: string, newText: string): number {
 
   const ratio = changedCharacters / normalizedOld.length;
 
-  return Math.min(1, ratio);
+  return {
+    ratio: Math.min(1, ratio),
+    diff,
+  };
 }
 
 /**
- * Check if a modification is meaningful based on change threshold
+ * Check if a modification is meaningful and return diff parts if so
  */
-function isMeaningfulChange(oldContent: string, newContent: string): boolean {
-  const ratio = calculateChangeRatio(oldContent, newContent);
-  return ratio >= MEANINGFUL_CHANGE_THRESHOLD;
+function getMeaningfulChange(
+  oldContent: string,
+  newContent: string,
+): { isMeaningful: boolean; diff?: DiffChange[] } {
+  const { ratio, diff } = calculateChangeRatio(oldContent, newContent);
+  if (ratio >= MEANINGFUL_CHANGE_THRESHOLD) {
+    return { isMeaningful: true, diff };
+  }
+  return { isMeaningful: false };
 }
 
 /**
@@ -93,8 +105,20 @@ export function diffSections(oldSections: Section[], newSections: Section[]): Ch
     } else if (oldSection.hash !== newSection.hash) {
       // Hash changed - check if modification is meaningful
       // This filters out minor punctuation/whitespace changes
-      if (isMeaningfulChange(oldSection.content, newSection.content)) {
-        changes.push({ section: newSection.title, type: 'MODIFIED' });
+      const meaningfulChange = getMeaningfulChange(oldSection.content, newSection.content);
+
+      if (meaningfulChange.isMeaningful && meaningfulChange.diff) {
+        const details: DiffDetail[] = meaningfulChange.diff.map((part) => ({
+          value: part.value,
+          added: part.added === true,
+          removed: part.removed === true,
+        }));
+
+        changes.push({
+          section: newSection.title,
+          type: 'MODIFIED',
+          details,
+        });
       }
       // If not meaningful, silently ignore the change
     }

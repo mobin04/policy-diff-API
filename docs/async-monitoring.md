@@ -143,7 +143,13 @@ X-API-Key: pdiff_xxx
         "section": "Data Sharing",
         "type": "MODIFIED",
         "risk": "HIGH",
-        "reason": "High risk keyword detected in content"
+        "reason": "High risk keyword detected in content",
+        "details": [
+          { "value": "We may share your data with ", "added": false, "removed": false },
+          { "value": "partners", "added": false, "removed": true },
+          { "value": "unaffiliated third parties", "added": true, "removed": false },
+          { "value": ".", "added": false, "removed": false }
+        ]
       }
     ]
   }
