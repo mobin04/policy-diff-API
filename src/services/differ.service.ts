@@ -1,4 +1,5 @@
 import { Section, Change } from '../types';
+import { diffWords } from 'diff';
 
 /**
  * WHY SMALL-CHANGE THRESHOLD REDUCES NOISE:
@@ -15,7 +16,7 @@ const MEANINGFUL_CHANGE_THRESHOLD = 0.05; // 5%
  * Normalize text for comparison
  * Strips punctuation and extra whitespace to focus on actual content
  */
-function normalizeForComparison(text: string): string {
+function normalizeText(text: string): string {
   return (
     text
       .toLowerCase()
@@ -29,42 +30,32 @@ function normalizeForComparison(text: string): string {
 
 /**
  * Calculate change ratio between two strings
- * Uses simple length difference after normalization
+ * Uses word-based Myers diff algorithm using diff library.
+ * Improves insertion/deletion accuracy and prevents false high ratios from character shifting.
  *
  * @returns Ratio of change (0.0 = identical, 1.0 = completely different)
  */
 function calculateChangeRatio(oldText: string, newText: string): number {
-  const normalizedOld = normalizeForComparison(oldText);
-  const normalizedNew = normalizeForComparison(newText);
+  const normalizedOld = normalizeText(oldText);
+  const normalizedNew = normalizeText(newText);
 
-  // If identical after normalization, no change
-  if (normalizedOld === normalizedNew) {
-    return 0;
+  if (normalizedOld.length === 0) {
+    return 1;
   }
 
-  // Calculate based on length difference
-  const oldLength = normalizedOld.length;
-  const newLength = normalizedNew.length;
+  const diff = diffWords(normalizedOld, normalizedNew);
 
-  if (oldLength === 0) {
-    return newLength > 0 ? 1 : 0;
-  }
+  let changedCharacters = 0;
 
-  // Use Levenshtein-like approximation: difference in length + character changes
-  // For performance, we use a simpler heuristic
-  const lengthDiff = Math.abs(newLength - oldLength);
-
-  // Count character differences (simple approximation)
-  let charDiffs = 0;
-  const minLen = Math.min(oldLength, newLength);
-  for (let i = 0; i < minLen; i++) {
-    if (normalizedOld[i] !== normalizedNew[i]) {
-      charDiffs++;
+  for (const part of diff) {
+    if (part.added || part.removed) {
+      changedCharacters += part.value.length;
     }
   }
 
-  const totalDiff = lengthDiff + charDiffs;
-  return Math.min(totalDiff / oldLength, 1.0);
+  const ratio = changedCharacters / normalizedOld.length;
+
+  return Math.min(1, ratio);
 }
 
 /**
