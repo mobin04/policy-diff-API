@@ -1,5 +1,6 @@
 import { Section, Change, DiffDetail } from '../types';
 import { diffWords, Change as DiffChange } from 'diff';
+import levenshtein from 'fast-levenshtein';
 
 /**
  * WHY SMALL-CHANGE THRESHOLD REDUCES NOISE:
@@ -11,6 +12,12 @@ import { diffWords, Change as DiffChange } from 'diff';
 
 /** Minimum change ratio to consider a modification meaningful */
 const MEANINGFUL_CHANGE_THRESHOLD = 0.05; // 5%
+
+/**
+ * Threshold for fuzzy title matching to prevent REMOVED + ADDED misclassification
+ * when titles are slightly reworded.
+ */
+const TITLE_SIMILARITY_THRESHOLD = 0.85;
 
 /**
  * Normalize text for comparison
@@ -29,16 +36,36 @@ function normalizeText(text: string): string {
 }
 
 /**
+ * Calculate similarity between two titles using Levenshtein distance
+ *
+ * @returns Similarity score between 0 and 1
+ */
+function calculateTitleSimilarity(a: string, b: string): number {
+  const normalizedA = normalizeText(a);
+  const normalizedB = normalizeText(b);
+
+  if (normalizedA.length === 0 && normalizedB.length === 0) {
+    return 1;
+  }
+
+  const distance = levenshtein.get(normalizedA, normalizedB);
+  const maxLength = Math.max(normalizedA.length, normalizedB.length);
+
+  if (maxLength === 0) {
+    return 1;
+  }
+
+  return 1 - distance / maxLength;
+}
+
+/**
  * Calculate change ratio and return diff parts between two strings
  * Uses word-based Myers diff algorithm using diff library.
  * Improves insertion/deletion accuracy and prevents false high ratios from character shifting.
  *
  * @returns Object with ratio of change and the diff parts
  */
-function calculateChangeRatio(
-  oldText: string,
-  newText: string,
-): { ratio: number; diff: DiffChange[] } {
+function calculateChangeRatio(oldText: string, newText: string): { ratio: number; diff: DiffChange[] } {
   const normalizedOld = normalizeText(oldText);
   const normalizedNew = normalizeText(newText);
 
@@ -67,10 +94,7 @@ function calculateChangeRatio(
 /**
  * Check if a modification is meaningful and return diff parts if so
  */
-function getMeaningfulChange(
-  oldContent: string,
-  newContent: string,
-): { isMeaningful: boolean; diff?: DiffChange[] } {
+function getMeaningfulChange(oldContent: string, newContent: string): { isMeaningful: boolean; diff?: DiffChange[] } {
   const { ratio, diff } = calculateChangeRatio(oldContent, newContent);
   if (ratio >= MEANINGFUL_CHANGE_THRESHOLD) {
     return { isMeaningful: true, diff };
@@ -84,6 +108,9 @@ function getMeaningfulChange(
  * Uses section hashes for fast comparison, then applies
  * meaningful change filter to reduce noise from minor edits.
  *
+ * Implements deterministic fuzzy section title matching to prevent
+ * minor title edits from being classified as REMOVED + ADDED.
+ *
  * @param oldSections - Sections from previous version
  * @param newSections - Sections from current version
  * @returns Array of meaningful changes
@@ -91,45 +118,81 @@ function getMeaningfulChange(
 export function diffSections(oldSections: Section[], newSections: Section[]): Change[] {
   const changes: Change[] = [];
 
-  // Build maps for O(1) lookup using both hash and content
-  const oldMap = new Map(oldSections.map((s) => [s.title, s]));
-  const newMap = new Map(newSections.map((s) => [s.title, s]));
+  // Tracks which old sections are still available for matching
+  const unmatchedOldSections = new Map(oldSections.map((s) => [s.title, s]));
+  const pendingNewSections: Section[] = [];
 
-  // Check for ADDED and MODIFIED
+  // PASS 1: Exact Title Matching
   for (const newSection of newSections) {
-    const oldSection = oldMap.get(newSection.title);
+    const oldSection = unmatchedOldSections.get(newSection.title);
 
-    if (oldSection === undefined) {
-      // Section is completely new
-      changes.push({ section: newSection.title, type: 'ADDED' });
-    } else if (oldSection.hash !== newSection.hash) {
-      // Hash changed - check if modification is meaningful
-      // This filters out minor punctuation/whitespace changes
-      const meaningfulChange = getMeaningfulChange(oldSection.content, newSection.content);
+    if (oldSection) {
+      unmatchedOldSections.delete(newSection.title);
 
-      if (meaningfulChange.isMeaningful && meaningfulChange.diff) {
-        const details: DiffDetail[] = meaningfulChange.diff.map((part) => ({
-          value: part.value,
-          added: part.added === true,
-          removed: part.removed === true,
-        }));
+      if (oldSection.hash !== newSection.hash) {
+        // Hash changed - check if modification is meaningful
+        const meaningfulChange = getMeaningfulChange(oldSection.content, newSection.content);
 
-        changes.push({
-          section: newSection.title,
-          type: 'MODIFIED',
-          details,
-        });
+        if (meaningfulChange.isMeaningful && meaningfulChange.diff) {
+          const details: DiffDetail[] = meaningfulChange.diff.map((part) => ({
+            value: part.value,
+            added: part.added === true,
+            removed: part.removed === true,
+          }));
+
+          changes.push({
+            section: newSection.title,
+            type: 'MODIFIED',
+            details,
+          });
+        }
       }
-      // If not meaningful, silently ignore the change
+      // If hash identical, no change - skip entirely
+    } else {
+      pendingNewSections.push(newSection);
     }
-    // If hash identical, no change - skip entirely
   }
 
-  // Check for REMOVED sections
-  for (const oldSection of oldSections) {
-    if (!newMap.has(oldSection.title)) {
-      changes.push({ section: oldSection.title, type: 'REMOVED' });
+  // PASS 2: Fuzzy Title Matching for remaining new sections
+  for (const newSection of pendingNewSections) {
+    let bestMatchTitle: string | null = null;
+    let bestScore = 0;
+
+    // Find best match among remaining old sections
+    for (const [oldTitle] of unmatchedOldSections) {
+      const score = calculateTitleSimilarity(newSection.title, oldTitle);
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatchTitle = oldTitle;
+      }
     }
+
+    if (bestMatchTitle && bestScore >= TITLE_SIMILARITY_THRESHOLD) {
+      const oldSection = unmatchedOldSections.get(bestMatchTitle)!;
+      unmatchedOldSections.delete(bestMatchTitle);
+
+      // Similarity threshold met -> treat as MODIFIED
+      const diffResult = calculateChangeRatio(oldSection.content, newSection.content);
+      const details: DiffDetail[] = diffResult.diff.map((part) => ({
+        value: part.value,
+        added: part.added === true,
+        removed: part.removed === true,
+      }));
+
+      changes.push({
+        section: newSection.title,
+        type: 'MODIFIED',
+        details,
+      });
+    } else {
+      // No match found -> ADDED
+      changes.push({ section: newSection.title, type: 'ADDED' });
+    }
+  }
+
+  // Remaining unmatched old sections -> REMOVED
+  for (const [oldTitle] of unmatchedOldSections) {
+    changes.push({ section: oldTitle, type: 'REMOVED' });
   }
 
   return changes;
