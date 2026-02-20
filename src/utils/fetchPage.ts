@@ -93,21 +93,29 @@ export async function fetchPage(url: string, signal?: AbortSignal): Promise<stri
  * Throws deterministic API errors if content is invalid.
  */
 function validateFetchedContent(html: string): void {
-  const lowerHtml = html.toLowerCase();
+  // Load HTML for analysis
+  const $ = cheerio.load(html);
 
-  // Detect Bot Blocking / CAPTCHA patterns
-  const blockingPatterns = ['captcha', 'verify you are human', 'access denied', 'cloudflare'];
-  if (blockingPatterns.some((pattern) => lowerHtml.includes(pattern))) {
+  const title = $('title').text().toLowerCase();
+
+  // Refined Bot Blocking detection (Title-based to avoid false positives in content)
+  if (
+    title.includes('access denied') ||
+    title.includes('verify you are human') ||
+    title.includes('attention required')
+  ) {
     throw new PageAccessBlockedError();
   }
-
-  // Load HTML for deeper analysis
-  const $ = cheerio.load(html);
 
   // Detect JS-heavy SPA shells
   // Extract body text (stripping script/style content)
   const bodyText = $('body').text() || '';
   const totalTextLength = bodyText.trim().length;
+
+  // Cloudflare block page check (low text content + cloudflare in title)
+  if (title.includes('cloudflare') && totalTextLength < 200) {
+    throw new PageAccessBlockedError();
+  }
 
   const scriptTagCount = $('script').length;
 
