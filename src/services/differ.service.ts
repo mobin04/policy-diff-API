@@ -92,11 +92,41 @@ function calculateChangeRatio(oldText: string, newText: string): { ratio: number
 }
 
 /**
- * Check if a modification is meaningful and return diff parts if so
+ * Extracts and normalizes numeric tokens from text for deterministic comparison.
+ * Handles currency, percentages, durations, and standalone numbers.
+ */
+export function extractNumericTokens(text: string): string[] {
+  const NUMERIC_TOKEN_REGEX =
+    /([$€£]\s?\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?\s?%|\d+(?:\.\d+)?\s?(?:days?|months?|years?)|\b\d+(?:,\d{3})*(?:\.\d+)?\b)/gi;
+
+  const matches = text.match(NUMERIC_TOKEN_REGEX) || [];
+
+  return matches.map((token) => {
+    return token
+      .toLowerCase()
+      .replace(/,/g, '')
+      .replace(/\s+/g, '')
+      .replace(/days?$/, 'day')
+      .replace(/months?$/, 'month')
+      .replace(/years?$/, 'year');
+  });
+}
+
+/**
+ * Check if a modification is meaningful and return diff parts if so.
+ * Implements an override for numeric changes to ensure high-impact numeric updates
+ * are always flagged even if they fall below the ratio threshold.
  */
 function getMeaningfulChange(oldContent: string, newContent: string): { isMeaningful: boolean; diff?: DiffChange[] } {
   const { ratio, diff } = calculateChangeRatio(oldContent, newContent);
-  if (ratio >= MEANINGFUL_CHANGE_THRESHOLD) {
+
+  const oldTokens = extractNumericTokens(oldContent);
+  const newTokens = extractNumericTokens(newContent);
+
+  const numericChangeDetected =
+    oldTokens.length !== newTokens.length || oldTokens.some((token, i) => token !== newTokens[i]);
+
+  if (numericChangeDetected || ratio >= MEANINGFUL_CHANGE_THRESHOLD) {
     return { isMeaningful: true, diff };
   }
   return { isMeaningful: false };
