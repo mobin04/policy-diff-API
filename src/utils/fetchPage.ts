@@ -1,5 +1,5 @@
 import axios, { AxiosError } from 'axios';
-import cheerio from 'cheerio';
+import * as cheerio from 'cheerio';
 import {
   FetchError,
   HttpError,
