@@ -1,6 +1,10 @@
 import { maskTemporalNoise } from './dateMasker';
 import { generateDateMaskedHash } from '../services/hash.service';
 
+/**
+ * Mandatory Test Cases (Context-Aware Temporal Noise Masking V2)
+ */
+
 function assert(condition: boolean, message: string) {
   if (!condition) {
     throw new Error(`Assertion Failed: ${message}`);
@@ -8,47 +12,58 @@ function assert(condition: boolean, message: string) {
 }
 
 function runTests() {
-  console.log('Running Temporal Noise Masking Tests...');
+  console.log('Running V2 Temporal Noise Masking Tests...');
 
-  const MASK = '__DATE_MASK__';
+  const DATE_TOKEN = '__DATE_TOKEN__';
 
-  // 1. Only date changed -> same mask
-  const d1 = 'Last Updated: January 1, 2024';
-  const d2 = 'Last Updated: February 2, 2025';
-  assert(maskTemporalNoise(d1) === MASK, 'Month format masking failed');
-  assert(maskTemporalNoise(d2) === MASK, 'Month format masking failed (2)');
-  assert(generateDateMaskedHash(d1) === generateDateMaskedHash(d2), 'Hash should be identical for different dates');
+  // A. Date-only change
+  const d1 = 'Last Updated: March 1, 2026';
+  const d2 = 'Last Updated: April 5, 2026';
+  assert(maskTemporalNoise(d1) === 'Last Updated: __DATE_TOKEN__', 'Date-only masking failed');
+  assert(maskTemporalNoise(d2) === 'Last Updated: __DATE_TOKEN__', 'Date-only masking failed (2)');
+  assert(generateDateMaskedHash(maskTemporalNoise(d1)) === generateDateMaskedHash(maskTemporalNoise(d2)), 'Hash equality failed');
 
-  // 2. ISO format
-  const iso = 'Effective Date: 2024-01-01';
-  assert(maskTemporalNoise(iso) === MASK, 'ISO format masking failed');
+  // B. Expiration date (No anchor)
+  const expiration = 'Authorization expires on 2026-05-20';
+  assert(!maskTemporalNoise(expiration).includes(DATE_TOKEN), 'Expiration date should NOT be masked');
 
-  // 3. Slash format
-  const slash = 'Revised: 01/02/2024';
-  assert(maskTemporalNoise(slash) === MASK, 'Slash format masking failed');
+  // C. Version number
+  const version = 'Policy Version 2.2.0';
+  assert(!maskTemporalNoise(version).includes(DATE_TOKEN), 'Version number should NOT be masked');
 
-  // 4. Date + real text change -> different hash
-  const t1 = 'Updated: January 1, 2024. We collect emails.';
-  const t2 = 'Updated: February 2, 2025. We collect phone numbers.';
-  assert(generateDateMaskedHash(t1) !== generateDateMaskedHash(t2), 'Hash should be different when text changes');
+  // D. Mixed sentence
+  const mixed = 'Version 2.0 updated March 1, 2026';
+  const maskedMixed = maskTemporalNoise(mixed);
+  assert(maskedMixed === 'Version 2.0 updated __DATE_TOKEN__', 'Mixed sentence masking failed');
+  assert(maskedMixed.includes('2.0'), 'Version number in mixed sentence should be preserved');
 
-  // 5. Monetary values -> must NOT be masked
-  const money = 'The fee is $2024.01 per month.';
-  assert(maskTemporalNoise(money).includes('$2024.01'), 'Monetary value should NOT be masked');
+  // E. Numeric non-date
+  const money = 'Total cost is $19.99';
+  assert(!maskTemporalNoise(money).includes(DATE_TOKEN), 'Numeric non-date ($19.99) should NOT be masked');
 
-  // 6. Percentages -> must NOT be masked
-  const percent = 'Usage increased by 20.24%.';
-  assert(maskTemporalNoise(percent).includes('20.24%'), 'Percentage should NOT be masked');
+  // F. Percentage
+  const percent = 'Usage limit is 10%';
+  assert(!maskTemporalNoise(percent).includes(DATE_TOKEN), 'Percentage (10%) should NOT be masked');
 
-  // 7. Date embedded inside paragraph
-  const para = 'On January 1, 2024 we changed our terms. This is final.';
-  assert(maskTemporalNoise(para).includes(MASK), 'Embedded date masking failed');
+  // G. Multiple dates in one document (Scoped to anchors)
+  const multi = 'Effective Date: 2025-01-01. Then nothing happens until 2026-01-01, which is when something happens. Revised on May 10th, 2025.';
+  const maskedMulti = maskTemporalNoise(multi);
+  assert(maskedMulti.includes('Effective Date: __DATE_TOKEN__'), 'First anchor date failed');
+  assert(maskedMulti.includes('2026-01-01'), 'Date without anchor should not be masked');
+  assert(maskedMulti.includes('Revised on __DATE_TOKEN__'), 'Second anchor date failed');
 
-  // 8. Non-date numeric sequence
-  const nums = 'Serial number 123-456-7890 is active.';
-  assert(!maskTemporalNoise(nums).includes(MASK), 'Non-date sequence should NOT be masked');
+  // H. Multi-format verification
+  const iso = 'published: 2024-12-01';
+  const numeric = 'date: 12/01/2024';
+  assert(maskTemporalNoise(iso).includes(DATE_TOKEN), 'ISO format anchor masking failed');
+  assert(maskTemporalNoise(numeric).includes(DATE_TOKEN), 'Numeric format anchor masking failed');
 
-  console.log('All Temporal Noise Masking Tests Passed.');
+  console.log('All V2 Temporal Noise Masking Tests Passed.');
 }
 
-runTests();
+try {
+  runTests();
+} catch (e) {
+  console.error(e);
+  process.exit(1);
+}

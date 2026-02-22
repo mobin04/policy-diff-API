@@ -1,4 +1,5 @@
 import * as cheerio from 'cheerio';
+import { maskTemporalNoise } from '../utils/dateMasker';
 
 /**
  * Normalizes structural elements (tables, lists) into stable canonical text.
@@ -71,7 +72,8 @@ function normalizeStructuralElements($: ReturnType<typeof cheerio.load>): void {
  * Performs structural and cleanup normalization on HTML.
  */
 export function normalizeHtml(html: string): string {
-  const $ = cheerio.load(html);
+  const maskedHtml = maskTemporalNoise(html);
+  const $ = cheerio.load(maskedHtml);
 
   // 1. Remove unwanted tags (HTML cleaning)
   $('script, style, noscript').remove();
