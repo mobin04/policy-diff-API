@@ -526,28 +526,29 @@ Matching order:
 
 No semantic or AI similarity is used.
 
-## Temporal Noise Masking
+## Context-Aware Temporal Noise Masking
 
-PolicyDiff masks date-only changes during hash computation.
+PolicyDiff performs deterministic, context-scoped date masking before normalization.
 
-Examples:
+Masking Rules:
 
-- "Last Updated: January 1, 2024"
-- "Effective Date: 2025-02-01"
+- Dates are masked ONLY when within 5 words of anchor keywords:
+  updated, revised, effective, published, modified, date
 
-These strings are replaced with a deterministic token:
+- Supported formats:
+  ISO (YYYY-MM-DD)
+  Alpha (March 1, 2026)
+  Numeric (01/02/2026)
 
-`__DATE_MASK__`
+- Version numbers (e.g., 2.2.0, v1.3) are explicitly protected.
 
-This occurs only in the hashing view.
+Masking replaces dates with:
 
-The original content remains unchanged for:
+__DATE_TOKEN__
 
-- Storage
-- Diff display
-- Risk classification
+This occurs only in the hashing pipeline.
 
-This eliminates common false positives while preserving determinism and auditability.
+Original content remains unchanged for storage and display.
 
 No heuristics or AI are used.
 
