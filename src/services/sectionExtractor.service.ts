@@ -1,5 +1,5 @@
 import * as cheerio from 'cheerio';
-import crypto from 'crypto';
+import { generateDateMaskedHash } from './hash.service';
 import { Section } from '../types';
 
 /**
@@ -17,13 +17,6 @@ type PartialSection = {
   title: string;
   content: string;
 };
-
-/**
- * Generate SHA-256 hash of content
- */
-function hashContent(content: string): string {
-  return crypto.createHash('sha256').update(content).digest('hex');
-}
 
 /**
  * Normalize content for consistent hashing
@@ -100,7 +93,7 @@ export function extractSections(html: string): Section[] {
   const sections: Section[] = partialSections.map((partial) => ({
     title: partial.title,
     content: partial.content,
-    hash: hashContent(normalizeForHash(partial.content)),
+    hash: generateDateMaskedHash(normalizeForHash(partial.content)),
   }));
 
   return sections;

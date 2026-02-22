@@ -3,7 +3,7 @@ import { savePage, getPageInfo, checkCooldown, updatePageCache } from '../reposi
 import { normalizeContent, normalizeHtml } from './normalizer.service';
 import { extractSections } from './sectionExtractor.service';
 import { extractMainContent } from '../utils/mainContentExtractor';
-import { generateHash } from '../utils/hash';
+import { generateDateMaskedHash } from './hash.service';
 import { canonicalizeUrl } from '../utils/canonicalizeUrl';
 import { DiffResult, CheckResult } from '../types';
 import { analyzeRisk } from './riskEngine.service';
@@ -86,7 +86,7 @@ export async function checkPage(rawUrl: string, options: CheckPageOptions = {}):
 
   const normalizedContent = normalizeContent(isolatedHtml);
   const sections = extractSections(isolatedHtml);
-  const contentHash = generateHash(normalizedContent);
+  const contentHash = generateDateMaskedHash(normalizedContent);
 
   // Save using ONLY the canonical URL
   const saveResult = await savePage(canonicalUrl, normalizedContent, contentHash, sections);
