@@ -9,6 +9,8 @@ export type MetricsResponse = {
   high_risk_count: number;
   medium_risk_count: number;
   low_risk_count: number;
+  content_isolation_success_count: number;
+  content_isolation_fallback_count: number;
   failure_breakdown: {
     TIMEOUT: number;
     DNS_FAILURE: number;
@@ -29,6 +31,8 @@ export async function getInternalMetrics(): Promise<MetricsResponse> {
     high_risk_count: string;
     medium_risk_count: string;
     low_risk_count: string;
+    content_isolation_success_count: string;
+    content_isolation_fallback_count: string;
   }>(`
     SELECT 
         COUNT(*) as total_jobs,
@@ -38,7 +42,9 @@ export async function getInternalMetrics(): Promise<MetricsResponse> {
         AVG(EXTRACT(EPOCH FROM (completed_at - started_at)) * 1000) FILTER (WHERE status = 'COMPLETED' AND completed_at IS NOT NULL AND started_at IS NOT NULL) as average_processing_time_ms,
         COUNT(*) FILTER (WHERE result->>'risk_level' = 'HIGH') as high_risk_count,
         COUNT(*) FILTER (WHERE result->>'risk_level' = 'MEDIUM') as medium_risk_count,
-        COUNT(*) FILTER (WHERE result->>'risk_level' = 'LOW') as low_risk_count
+        COUNT(*) FILTER (WHERE result->>'risk_level' = 'LOW') as low_risk_count,
+        COUNT(*) FILTER (WHERE result->>'content_isolation' = 'success') as content_isolation_success_count,
+        COUNT(*) FILTER (WHERE result->>'content_isolation' = 'fallback') as content_isolation_fallback_count
     FROM monitor_jobs
   `);
 
@@ -72,6 +78,8 @@ export async function getInternalMetrics(): Promise<MetricsResponse> {
     high_risk_count: parseInt(summary.high_risk_count, 10),
     medium_risk_count: parseInt(summary.medium_risk_count, 10),
     low_risk_count: parseInt(summary.low_risk_count, 10),
+    content_isolation_success_count: parseInt(summary.content_isolation_success_count, 10),
+    content_isolation_fallback_count: parseInt(summary.content_isolation_fallback_count, 10),
     failure_breakdown: failure_breakdown as MetricsResponse['failure_breakdown'],
   };
 }

@@ -2,6 +2,7 @@ import { DB } from '../db';
 import { fetchPage } from '../utils/fetchPage';
 import { normalizeContent } from './normalizer.service';
 import { extractSections } from './sectionExtractor.service';
+import { extractMainContent } from '../utils/mainContentExtractor';
 import { generateHash } from '../utils/hash';
 import { canonicalizeUrl } from '../utils/canonicalizeUrl';
 import { diffSections } from './differ.service';
@@ -320,7 +321,7 @@ export async function processMonitorJob(jobId: string, logger?: Logger): Promise
  * Execute the full monitoring pipeline for a page
  *
  * This is the core processing logic extracted from the sync flow.
- * It performs: fetch → normalize → extract → diff → risk analysis
+ * It performs: fetch → normalize → isolate → extract → diff → risk analysis
  *
  * @param pageId - Database ID of the page
  * @param url - Canonical URL to fetch
@@ -337,13 +338,19 @@ async function executeMonitoringPipeline(
   // Fetch page content (respects AbortSignal)
   const rawHtml = await fetchPage(url, signal);
 
+  // Content Isolation Layer
+  const { html: isolatedHtml, status: isolationStatus } = extractMainContent(rawHtml);
+
   // Normalize and extract sections
-  const normalizedContent = normalizeContent(rawHtml);
-  const sections = extractSections(rawHtml);
+  const normalizedContent = normalizeContent(isolatedHtml);
+  const sections = extractSections(isolatedHtml);
   const contentHash = generateHash(normalizedContent);
 
   if (logger) {
-    logger.debug({ pageId, contentHash, sectionCount: sections.length }, 'Content processed');
+    logger.debug(
+      { pageId, contentHash, sectionCount: sections.length, isolationStatus },
+      'Content processed',
+    );
   }
 
   // Check if signal aborted before heavy operations
@@ -372,13 +379,19 @@ async function executeMonitoringPipeline(
 
     // Check if content changed
     if (latestHash === contentHash) {
-      diffResult = { message: 'No meaningful change detected' };
+      diffResult = {
+        message: 'No meaningful change detected',
+        content_isolation: isolationStatus,
+      };
     } else {
       // Calculate diff
       const changes = diffSections(latestSections, sections);
 
       if (changes.length === 0) {
-        diffResult = { message: 'No meaningful change detected' };
+        diffResult = {
+          message: 'No meaningful change detected',
+          content_isolation: isolationStatus,
+        };
       } else {
         // Analyze risk
         const riskAnalysis = analyzeRisk(changes, sections);
@@ -387,6 +400,7 @@ async function executeMonitoringPipeline(
           message: 'Changes detected',
           risk_level: riskAnalysis.risk_level,
           changes: riskAnalysis.changes,
+          content_isolation: isolationStatus,
         };
 
         // Store new version
@@ -407,7 +421,10 @@ async function executeMonitoringPipeline(
       JSON.stringify(sections),
     ]);
 
-    diffResult = { message: 'First snapshot stored' };
+    diffResult = {
+      message: 'First snapshot stored',
+      content_isolation: isolationStatus,
+    };
   }
 
   // Update page cache

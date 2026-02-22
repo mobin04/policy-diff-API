@@ -2,6 +2,7 @@ import { fetchPage } from '../utils/fetchPage';
 import { savePage, getPageInfo, checkCooldown, updatePageCache } from '../repositories/page.repository';
 import { normalizeContent } from './normalizer.service';
 import { extractSections } from './sectionExtractor.service';
+import { extractMainContent } from '../utils/mainContentExtractor';
 import { generateHash } from '../utils/hash';
 import { canonicalizeUrl } from '../utils/canonicalizeUrl';
 import { DiffResult, CheckResult } from '../types';
@@ -76,24 +77,37 @@ export async function checkPage(rawUrl: string, options: CheckPageOptions = {}):
 
   // Fetch and process page
   const rawHtml = await fetchPage(canonicalUrl);
-  const normalizedContent = normalizeContent(rawHtml);
-  const sections = extractSections(rawHtml);
+
+  // Content Isolation Layer
+  const { html: isolatedHtml, status: isolationStatus } = extractMainContent(rawHtml);
+
+  const normalizedContent = normalizeContent(isolatedHtml);
+  const sections = extractSections(isolatedHtml);
   const contentHash = generateHash(normalizedContent);
 
   // Save using ONLY the canonical URL
   const saveResult = await savePage(canonicalUrl, normalizedContent, contentHash, sections);
 
   if (logger) {
-    logger.debug({ canonicalUrl, pageId: saveResult.pageId, status: saveResult.status }, 'Page processed');
+    logger.debug(
+      { canonicalUrl, pageId: saveResult.pageId, status: saveResult.status, isolationStatus },
+      'Page processed',
+    );
   }
 
   // Build the diff result
   let diffResult: DiffResult;
 
   if (saveResult.status === 'first_version') {
-    diffResult = { message: 'First snapshot stored' };
+    diffResult = {
+      message: 'First snapshot stored',
+      content_isolation: isolationStatus,
+    };
   } else if (saveResult.status === 'unchanged') {
-    diffResult = { message: 'No meaningful change detected' };
+    diffResult = {
+      message: 'No meaningful change detected',
+      content_isolation: isolationStatus,
+    };
   } else {
     const changes = saveResult.changes || [];
     const riskAnalysis = analyzeRisk(changes, sections);
@@ -102,6 +116,7 @@ export async function checkPage(rawUrl: string, options: CheckPageOptions = {}):
       message: 'Changes detected',
       risk_level: riskAnalysis.risk_level,
       changes: riskAnalysis.changes,
+      content_isolation: isolationStatus,
     };
   }
 

@@ -37,6 +37,7 @@ The system is intentionally **deterministic** and avoids probabilistic AI models
 The system is built on a foundation of discrete, purposeful features:
 
 -   **Snapshot System**: Validates fetched content before versioning. Detects and rejects JS-heavy SPA shells, bot-blocked pages, or insufficient meaningful content before snapshotting.
+-   **Content Isolation Layer**: Deterministically isolates the primary policy content container (e.g., `<main>`, `<article>`) while removing global noise like headers, navbars, and footers. This prevents false positives caused by layout changes.
 -   **HTML Normalization**: Strips scripts, styles, and other non-content tags to isolate meaningful text.
 -   **Canonicalized URLs**: Normalizes URLs to prevent duplicate tracking of the same page (e.g., `http://` vs `https://`, trailing slashes, query parameters).
 -   **Section Extraction**: Parses HTML into logical sections using `<h1>`, `<h2>`, and `<h3>` tags as delimiters.
@@ -84,6 +85,12 @@ The application follows a standard layered architecture to ensure a clear separa
 -   **Controllers**: Handle HTTP request/response logic, validate input, and orchestrate calls to the service layer. They are responsible for the API contract.
 -   **Services**: Contain the core business logic. They are unaware of HTTP and focus on executing the monitoring pipeline, managing jobs, and performing risk analysis.
 -   **Repositories**: Abstract database interactions. They handle all SQL queries and data mapping, providing a clean interface to the service layer.
+
+### Monitoring Pipeline Flow
+
+The core analysis pipeline follows a deterministic lifecycle:
+
+`fetch → normalize → isolate content → section parse → hash → diff`
 
 This separation ensures that business logic is independent of the transport layer (Fastify) and the persistence layer (PostgreSQL), making the system easier to test, maintain, and evolve.
 
@@ -194,12 +201,13 @@ The core pipeline executes in the following order:
     -   **Dynamic JS-rendered pages**: Detected via SPA shells (e.g., `#root`, `#app`) or high script-to-text ratios.
     -   **Bot-protected or blocked pages**: Detected via common patterns (e.g., CAPTCHA, Cloudflare, access denied messages).
     -   **Insufficient content**: Pages with less than 300 characters of meaningful text.
-4.  **Hash Comparison**: The normalized content is hashed. If this hash matches the hash of the most recent `page_version`, the process exits early ("No meaningful change detected").
-4.  **Section Extraction**: The HTML is parsed, and content is grouped into sections based on `<h1>`, `<h2>`, and `<h3>` tags. Each section's content is also hashed.
-5.  **Structural Diff**: The new sections are compared to the sections from the previous version. The engine identifies `ADDED`, `REMOVED`, and `MODIFIED` sections. Minor modifications are ignored.
-6.  **Risk Classification**: Each change is passed through the expanded deterministic risk engine, which assigns a risk level (`LOW`, `MEDIUM`, `HIGH`) and a reason based on keyword matches or section type (e.g. low-impact removal of informational sections).
-7.  **Result Storage**: If changes were found, a new record is created in `page_versions`. The final analysis is stored in the `monitor_jobs` table's `result` column.
-8.  **Job Completion**: The job status is updated to `COMPLETED` or `FAILED`.
+4.  **Content Isolation**: The engine deterministically isolates the primary policy content container (e.g., `main`, `article`, `#content`) and removes global layout noise like `header`, `nav`, and `footer`. If no suitable container is found, it falls back to the `body`.
+5.  **Hash Comparison**: The normalized content is hashed. If this hash matches the hash of the most recent `page_version`, the process exits early ("No meaningful change detected").
+6.  **Section Extraction**: The HTML is parsed, and content is grouped into sections based on `<h1>`, `<h2>`, and `<h3>` tags. Each section's content is also hashed.
+7.  **Structural Diff**: The new sections are compared to the sections from the previous version. The engine identifies `ADDED`, `REMOVED`, and `MODIFIED` sections. Minor modifications are ignored.
+8.  **Risk Classification**: Each change is passed through the expanded deterministic risk engine, which assigns a risk level (`LOW`, `MEDIUM`, `HIGH`) and a reason based on keyword matches or section type (e.g. low-impact removal of informational sections).
+9.  **Result Storage**: If changes were found, a new record is created in `page_versions`. The final analysis is stored in the `monitor_jobs` table's `result` column.
+10. **Job Completion**: The job status is updated to `COMPLETED` or `FAILED`.
 
 ## 8. API Reference
 
@@ -398,6 +406,8 @@ Clients must provide an `X-Internal-Token: <token>` header to access this endpoi
   "high_risk_count": 45,
   "medium_risk_count": 120,
   "low_risk_count": 935,
+  "content_isolation_success_count": 1050,
+  "content_isolation_fallback_count": 50,
   "failure_breakdown": {
     "TIMEOUT": 20,
     "DNS_ERROR": 15,
@@ -467,6 +477,38 @@ The system uses a deterministic error classification model. Internal application
 -   `INTERNAL_ERROR`: An unexpected server-side error occurred.
 
 All errors are logged with a `request_id` to correlate client reports with server-side logs for efficient debugging.
+
+## Content Isolation Layer
+
+PolicyDiff includes a deterministic **Content Isolation Layer** that executes before section extraction. Full DOM parsing often includes navigation bars, headers, footers, and other global layout elements that are unrelated to the actual compliance document. When these global elements change (e.g., a menu item is added), it can cause "false positive" changes in the diff engine.
+
+### Isolation Strategy
+
+The Isolation Layer uses a deterministic multi-stage strategy:
+
+1.  **Global Noise Removal**: Irrelevant elements are removed from the DOM, including `header`, `nav`, `footer`, `aside`, `script`, `style`, `noscript`, `iframe`, `button`, and `form`.
+2.  **Deterministic Container Selection**: The engine searches for primary content containers in a fixed priority order:
+    -   `<main>`
+    -   `<article>`
+    -   `[role="main"]`
+    -   `#content`
+    -   `#main`
+    -   `.content`
+    -   `.policy`
+    -   `.terms`
+3.  **Length Validation**: Any candidate container must contain at least **500 characters** of text to be considered valid.
+4.  **Rank Selection**: If multiple candidates exist, the one with the largest text volume is selected.
+5.  **Fallback Mechanism**: If no suitable container is identified, the engine falls back to the `<body>` element.
+
+### Success vs. Fallback
+
+The isolation status is tracked and available in system metrics:
+-   **Success**: A primary container was successfully identified and isolated.
+-   **Fallback**: No container was found, and the full body was used (after global noise removal).
+
+### Limitations
+
+The Isolation Layer relies on standard semantic HTML or common CSS conventions. If a site uses non-standard layouts or embeds policy content inside deeply nested, non-semantic `<div>` structures without standard IDs or classes, the engine may fall back to the full body.
 
 ## 10. Performance & Optimization
 
