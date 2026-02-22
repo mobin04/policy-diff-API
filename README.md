@@ -526,6 +526,31 @@ Matching order:
 
 No semantic or AI similarity is used.
 
+## Temporal Noise Masking
+
+PolicyDiff masks date-only changes during hash computation.
+
+Examples:
+
+- "Last Updated: January 1, 2024"
+- "Effective Date: 2025-02-01"
+
+These strings are replaced with a deterministic token:
+
+`__DATE_MASK__`
+
+This occurs only in the hashing view.
+
+The original content remains unchanged for:
+
+- Storage
+- Diff display
+- Risk classification
+
+This eliminates common false positives while preserving determinism and auditability.
+
+No heuristics or AI are used.
+
 ## Content Isolation Layer
 
 PolicyDiff includes a deterministic **Content Isolation Layer** that executes before section extraction. Full DOM parsing often includes navigation bars, headers, footers, and other global layout elements that are unrelated to the actual compliance document. When these global elements change (e.g., a menu item is added), it can cause "false positive" changes in the diff engine.
