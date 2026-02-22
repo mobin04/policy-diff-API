@@ -80,11 +80,11 @@ function detectTitleRisk(title: string): RiskLevel {
 }
 
 function evaluateChange(change: Change, newSections: Section[]): RiskedChange {
-  const { section, type } = change;
   let risk: RiskLevel = 'LOW';
   let reason = 'Minor wording change';
 
-  if (type === 'ADDED' || type === 'MODIFIED') {
+  if (change.type === 'ADDED' || change.type === 'MODIFIED') {
+    const { section } = change;
     const sectionContent = newSections.find((s) => s.title === section)?.content || '';
 
     if (detectHighRisk(sectionContent)) {
@@ -94,7 +94,14 @@ function evaluateChange(change: Change, newSections: Section[]): RiskedChange {
       risk = 'MEDIUM';
       reason = 'Medium risk keyword detected in content';
     }
-  } else if (type === 'REMOVED') {
+
+    return {
+      ...change,
+      risk,
+      reason,
+    };
+  } else if (change.type === 'DELETED') {
+    const { section } = change;
     const titleRisk = detectTitleRisk(section);
     if (titleRisk === 'HIGH') {
       risk = 'HIGH';
@@ -112,15 +119,22 @@ function evaluateChange(change: Change, newSections: Section[]): RiskedChange {
         reason = 'Section removed';
       }
     }
+
+    return {
+      ...change,
+      risk,
+      reason,
+    };
+  } else if (change.type === 'TITLE_RENAMED') {
+    return {
+      ...change,
+      risk: 'LOW',
+      reason: 'Section title renamed with identical content',
+    };
   }
 
-  return {
-    section,
-    type,
-    risk,
-    reason,
-    details: change.details,
-  };
+  const _exhaustiveCheck: never = change;
+  return _exhaustiveCheck;
 }
 
 export function analyzeRisk(

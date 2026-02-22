@@ -14,7 +14,7 @@ import levenshtein from 'fast-levenshtein';
 const MEANINGFUL_CHANGE_THRESHOLD = 0.05; // 5%
 
 /**
- * Threshold for fuzzy title matching to prevent REMOVED + ADDED misclassification
+ * Threshold for fuzzy title matching to prevent DELETED + ADDED misclassification
  * when titles are slightly reworded.
  */
 const TITLE_SIMILARITY_THRESHOLD = 0.85;
@@ -139,7 +139,10 @@ function getMeaningfulChange(oldContent: string, newContent: string): { isMeanin
  * meaningful change filter to reduce noise from minor edits.
  *
  * Implements deterministic fuzzy section title matching to prevent
- * minor title edits from being classified as REMOVED + ADDED.
+ * minor title edits from being classified as DELETED + ADDED.
+ *
+ * Implements Pass 3B for deterministic title rename detection via exact
+ * content hash match.
  *
  * @param oldSections - Sections from previous version
  * @param newSections - Sections from current version
@@ -184,6 +187,7 @@ export function diffSections(oldSections: Section[], newSections: Section[]): Ch
   }
 
   // PASS 2: Fuzzy Title Matching for remaining new sections
+  const remainingAfterFuzzy: Section[] = [];
   for (const newSection of pendingNewSections) {
     let bestMatchTitle: string | null = null;
     let bestScore = 0;
@@ -221,14 +225,45 @@ export function diffSections(oldSections: Section[], newSections: Section[]): Ch
       }
       // If hash identical or change not meaningful, treat as no change
     } else {
-      // No match found -> ADDED
-      changes.push({ section: newSection.title, type: 'ADDED' });
+      // No fuzzy match found -> move to next pass
+      remainingAfterFuzzy.push(newSection);
     }
   }
 
-  // Remaining unmatched old sections -> REMOVED
+  // PASS 3B: CONTENT HASH MATCH (Rename Detection)
+  const remainingAfterHash: Section[] = [];
+  for (const newSection of remainingAfterFuzzy) {
+    let matchedOldTitle: string | null = null;
+
+    // Search for exact content hash match among remaining old sections
+    for (const [oldTitle, oldSection] of unmatchedOldSections) {
+      if (oldSection.hash === newSection.hash) {
+        matchedOldTitle = oldTitle;
+        break;
+      }
+    }
+
+    if (matchedOldTitle) {
+      unmatchedOldSections.delete(matchedOldTitle);
+      changes.push({
+        type: 'TITLE_RENAMED',
+        oldTitle: matchedOldTitle,
+        newTitle: newSection.title,
+        contentHash: newSection.hash,
+      });
+    } else {
+      remainingAfterHash.push(newSection);
+    }
+  }
+
+  // FINAL PASS: Classify remaining as ADDED or DELETED
+  for (const newSection of remainingAfterHash) {
+    changes.push({ section: newSection.title, type: 'ADDED' });
+  }
+
+  // Remaining unmatched old sections -> DELETED
   for (const [oldTitle] of unmatchedOldSections) {
-    changes.push({ section: oldTitle, type: 'REMOVED' });
+    changes.push({ section: oldTitle, type: 'DELETED' });
   }
 
   return changes;
