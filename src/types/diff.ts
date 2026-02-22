@@ -2,6 +2,10 @@
  * Section extracted from HTML page
  * Includes content hash for efficient comparison
  */
+/**
+ * Section extracted from HTML page
+ * Includes content hash for efficient comparison
+ */
 export type Section = {
   title: string;
   content: string;
@@ -9,28 +13,25 @@ export type Section = {
   hash: string;
 };
 
-export type ChangeType = 'ADDED' | 'REMOVED' | 'MODIFIED';
+export type SectionDiffType = 'ADDED' | 'DELETED' | 'MODIFIED' | 'TITLE_RENAMED';
 
-export interface DiffDetail {
+export type DiffDetail = {
   value: string;
   added: boolean;
   removed: boolean;
-}
-
-export type Change = {
-  section: string;
-  type: ChangeType;
-  details?: DiffDetail[];
 };
+
+export type Change =
+  | { section: string; type: 'ADDED' }
+  | { section: string; type: 'DELETED' }
+  | { section: string; type: 'MODIFIED'; details: DiffDetail[] }
+  | { type: 'TITLE_RENAMED'; oldTitle: string; newTitle: string; contentHash: string };
 
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
 
-export type RiskedChange = {
-  section: string;
-  type: ChangeType;
+export type RiskedChange = Change & {
   risk: RiskLevel;
   reason: string;
-  details?: DiffDetail[];
 };
 
 /**
