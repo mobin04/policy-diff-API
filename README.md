@@ -38,6 +38,7 @@ The system is built on a foundation of discrete, purposeful features:
 
 -   **Snapshot System**: Validates fetched content before versioning. Detects and rejects JS-heavy SPA shells, bot-blocked pages, or insufficient meaningful content before snapshotting.
 -   **Content Isolation Layer**: Deterministically isolates the primary policy content container (e.g., `<main>`, `<article>`) while removing global noise like headers, navbars, and footers. This prevents false positives caused by layout changes.
+-   **Structural Normalization Layer**: Deterministically transforms `<table>`, `<ul>`, and `<ol>` into stable canonical text (Markdown-like) before hashing, ensuring precise diff detection for complex structures.
 -   **HTML Normalization**: Strips scripts, styles, and other non-content tags to isolate meaningful text.
 -   **Canonicalized URLs**: Normalizes URLs to prevent duplicate tracking of the same page (e.g., `http://` vs `https://`, trailing slashes, query parameters).
 -   **Section Extraction**: Parses HTML into logical sections using `<h1>`, `<h2>`, and `<h3>` tags as delimiters.
@@ -197,10 +198,7 @@ The core pipeline executes in the following order:
 
 1.  **URL Canonicalization**: The input URL is cleaned: protocol is set to `https`, query parameters and fragments are removed, and the path is normalized.
 2.  **Snapshot Fetch**: The system fetches the raw HTML content from the canonical URL with realistic browser headers and redirect handling.
-3.  **Content Validation**: The system validates the fetched content before snapshotting. It rejects:
-    -   **Dynamic JS-rendered pages**: Detected via SPA shells (e.g., `#root`, `#app`) or high script-to-text ratios.
-    -   **Bot-protected or blocked pages**: Detected via common patterns (e.g., CAPTCHA, Cloudflare, access denied messages).
-    -   **Insufficient content**: Pages with less than 300 characters of meaningful text.
+3.  **Structural Normalization**: The system deterministically transforms `<table>`, `<ul>`, and `<ol>` into stable canonical text (Markdown-like) and removes global noise like `script` and `style`.
 4.  **Content Isolation**: The engine deterministically isolates the primary policy content container (e.g., `main`, `article`, `#content`) and removes global layout noise like `header`, `nav`, and `footer`. If no suitable container is found, it falls back to the `body`.
 5.  **Hash Comparison**: The normalized content is hashed. If this hash matches the hash of the most recent `page_version`, the process exits early ("No meaningful change detected").
 6.  **Section Extraction**: The HTML is parsed, and content is grouped into sections based on `<h1>`, `<h2>`, and `<h3>` tags. Each section's content is also hashed.
@@ -477,6 +475,32 @@ The system uses a deterministic error classification model. Internal application
 -   `INTERNAL_ERROR`: An unexpected server-side error occurred.
 
 All errors are logged with a `request_id` to correlate client reports with server-side logs for efficient debugging.
+
+## Structural Normalization Layer
+
+PolicyDiff performs deterministic structural normalization before hashing.
+
+### Why
+
+HTML tables and lists often produce unstable diff noise due to DOM formatting shifts. Structural normalization converts:
+
+- `<table>` → canonical pipe-separated rows
+- `<ul>/<ol>` → canonical Markdown-like lists
+
+This ensures:
+
+- Stable hashing
+- Precise cell-level diff detection
+- Reduced structural noise
+- Deterministic output
+
+This transformation occurs before:
+
+- Content Isolation
+- Section Extraction
+- Hash Computation
+
+No heuristics or AI are involved.
 
 ## Content Isolation Layer
 

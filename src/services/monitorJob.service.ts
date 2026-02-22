@@ -1,6 +1,6 @@
 import { DB } from '../db';
 import { fetchPage } from '../utils/fetchPage';
-import { normalizeContent } from './normalizer.service';
+import { normalizeContent, normalizeHtml } from './normalizer.service';
 import { extractSections } from './sectionExtractor.service';
 import { extractMainContent } from '../utils/mainContentExtractor';
 import { generateHash } from '../utils/hash';
@@ -338,8 +338,11 @@ async function executeMonitoringPipeline(
   // Fetch page content (respects AbortSignal)
   const rawHtml = await fetchPage(url, signal);
 
+  // Structural Normalization Layer
+  const cleanedHtml = normalizeHtml(rawHtml);
+
   // Content Isolation Layer
-  const { html: isolatedHtml, status: isolationStatus } = extractMainContent(rawHtml);
+  const { html: isolatedHtml, status: isolationStatus } = extractMainContent(cleanedHtml);
 
   // Normalize and extract sections
   const normalizedContent = normalizeContent(isolatedHtml);
