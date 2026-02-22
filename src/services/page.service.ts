@@ -1,6 +1,6 @@
 import { fetchPage } from '../utils/fetchPage';
 import { savePage, getPageInfo, checkCooldown, updatePageCache } from '../repositories/page.repository';
-import { normalizeContent } from './normalizer.service';
+import { normalizeContent, normalizeHtml } from './normalizer.service';
 import { extractSections } from './sectionExtractor.service';
 import { extractMainContent } from '../utils/mainContentExtractor';
 import { generateHash } from '../utils/hash';
@@ -78,8 +78,11 @@ export async function checkPage(rawUrl: string, options: CheckPageOptions = {}):
   // Fetch and process page
   const rawHtml = await fetchPage(canonicalUrl);
 
+  // Structural Normalization Layer
+  const cleanedHtml = normalizeHtml(rawHtml);
+
   // Content Isolation Layer
-  const { html: isolatedHtml, status: isolationStatus } = extractMainContent(rawHtml);
+  const { html: isolatedHtml, status: isolationStatus } = extractMainContent(cleanedHtml);
 
   const normalizedContent = normalizeContent(isolatedHtml);
   const sections = extractSections(isolatedHtml);
