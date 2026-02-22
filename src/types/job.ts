@@ -11,7 +11,7 @@
  * FAILED: Job failed, error_type indicates cause
  */
 
-import { DiffResult } from './index';
+import { DiffResult } from './diff';
 
 /**
  * Job status enum values
