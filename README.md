@@ -54,8 +54,7 @@ The system is built on a foundation of discrete, purposeful features:
 -   **API Key Authentication**: Secures all endpoints with bearer token authentication.
 -   **Dev vs. Prod Keys**: Supports separate key environments (`pd_dev_...`, `pd_prod_...`) for safe development and testing.
 -   **SHA-256 Key Hashing**: Hashes all API keys before storage; raw keys are never stored.
--   **Rate Limiting**: Protects the API from abuse with a simple, per-key usage limit.
--   **Usage Tracking**: Increments a usage counter for each authenticated request.
+-   **Quota Enforcement**: Enforces per-key monthly job quotas with deterministic, backend-only atomic checks.
 -   **API Key Tiering**: Classifies keys into `FREE`, `PRO`, and `ENTERPRISE` tiers with explicit per-key quotas.
 -   **Usage Quotas**: Enforces per-key monthly job quotas with deterministic, backend-only checks.
 -   **Observability Layer**:
@@ -168,7 +167,7 @@ The database schema is designed to be normalized and efficient, with clear purpo
 
 -   **`api_keys`**
     -   **Purpose**: Manages API keys for authentication, rate limiting, and usage/tiers.
-    -   **Key Columns**: `id` (SERIAL PK), `key_hash` (UNIQUE TEXT), `usage_count` (INTEGER), `rate_limit` (INTEGER), `tier` (`FREE`/`PRO`/`ENTERPRISE`), `monthly_quota` (INTEGER), `monthly_usage` (INTEGER), `quota_reset_at` (TIMESTAMPTZ).
+    -   **Key Columns**: `id` (SERIAL PK), `key_hash` (UNIQUE TEXT), `email` (TEXT NOT NULL/UNIQUE), `tier` (`FREE`/`PRO`/`ENTERPRISE`), `monthly_quota` (INTEGER), `monthly_usage` (INTEGER), `quota_reset_at` (TIMESTAMPTZ).
     -   **Indexing**: A unique index on `key_hash` provides fast O(1) lookups during authentication. Additional indexes on `tier` and `quota_reset_at` support operational queries and maintenance.
 
 -   **`api_logs`**
@@ -441,6 +440,38 @@ A readiness probe that checks dependencies (e.g., database connection). Returns 
 }
 ```
 
+### `POST /v1/internal/provision`
+
+Endpoint to provision a new standard API key internally.
+
+**X-Provision-Secret Header:**
+Requires `X-Provision-Secret: <token>` configured by the `PROVISION_SECRET` env var.
+
+**Example Request:**
+
+```json
+{
+  "email": "user@example.com",
+  "name": "Production Key",
+  "tier": "FREE",
+  "environment": "live"
+}
+```
+
+**Example Response (200 OK):**
+
+```json
+{
+  "apiKey": "pd_live_a1b2c3d4e5f6...",
+  "warning": "Store this key securely. It will not be shown again."
+}
+```
+
+- Keys are generated securely with SHA-256 hashes in the database.
+- Enforces one active key per email.
+- Returns the key ONCE.
+- Replaces legacy per-key `usage_count` with monthly quota enforcement.
+
 **Error Contract:**
 
 All API errors follow a standard format.
@@ -697,7 +728,6 @@ PolicyDiff is designed for infrastructure-grade reliability. When deploying to p
 | `NODE_ENV` | Environment mode | `production` |
 | `PORT` | Listening port | Required |
 | `GLOBAL_RATE_LIMIT` | Requests per minute (all users) | Default: 1000 |
-| `PER_KEY_RATE_LIMIT` | Requests per minute (per API key) | Default: 100 |
 
 ### Deployment Checklist
 
@@ -715,7 +745,7 @@ PolicyDiff is designed for infrastructure-grade reliability. When deploying to p
 Welcome to PolicyDiff. Follow this guide to integrate the compliance signal engine into your workflow.
 
 ### 1. Obtain an API Key
-Currently, API keys are provisioned manually. Contact the administrator to request a key for your environment (`dev` or `prod`).
+Provision an API key using the internal provisioning endpoint `POST /v1/internal/provision` using your environment's `PROVISION_SECRET`.
 
 ### 2. Secure Storage
 Store your API key in a secure secret manager (e.g., AWS Secrets Manager, HashiCorp Vault). Never hardcode keys or commit them to source control.

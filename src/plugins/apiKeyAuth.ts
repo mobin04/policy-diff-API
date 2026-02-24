@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import fp from 'fastify-plugin';
-import { findApiKeyByRawKey, incrementUsage } from '../repositories/apiKey.repository';
-import { NODE_ENV, PER_KEY_RATE_LIMIT } from '../config';
+import { findApiKeyByRawKey, incrementMonthlyUsage } from '../repositories/apiKey.repository';
+import { NODE_ENV } from '../config';
 import { AuthErrorResponse } from '../types';
 
 /**
@@ -89,22 +89,16 @@ async function apiKeyAuthHook(request: FastifyRequest, reply: FastifyReply): Pro
     return;
   }
 
-  // Check rate limit
-  // System-wide PER_KEY_RATE_LIMIT caps the individual key's limit if it's more restrictive
-  const effectiveLimit = Math.min(apiKey.rateLimit, PER_KEY_RATE_LIMIT);
-  
-  if (apiKey.usageCount >= effectiveLimit) {
-    sendAuthError(reply, 429, 'Too Many Requests', 'Rate limit exceeded');
+  // Increment monthly usage atomically and check quota
+  const isUnderQuota = await incrementMonthlyUsage(apiKey.id);
+
+  if (!isUnderQuota) {
+    sendAuthError(reply, 403, 'Forbidden', 'Monthly usage limit reached');
     return;
   }
 
   // Attach API key to request for downstream handlers
   request.apiKey = apiKey;
-
-  // Increment usage count
-  // Note: This happens before the request completes. For billing accuracy,
-  // consider incrementing only on successful responses (in onResponse hook)
-  await incrementUsage(apiKey.id);
 }
 
 /**

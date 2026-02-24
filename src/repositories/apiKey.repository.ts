@@ -1,5 +1,5 @@
 import { DB } from '../db';
-import { ApiKey, ApiKeyRow, ApiKeyEnvironment } from '../types';
+import { ApiKey, ApiKeyRow, ApiKeyEnvironment, CreateApiKeyInput } from '../types';
 import { hashApiKey } from '../utils/apiKey';
 
 /**
@@ -10,10 +10,10 @@ function rowToApiKey(row: ApiKeyRow): ApiKey {
     id: row.id,
     keyHash: row.key_hash,
     name: row.name,
-    environment: row.environment,
+    email: row.email,
+    // Map DB 'live' to App 'prod' to handle legacy/mismatched DB constraints
+    environment: (row.environment as string) === 'live' ? 'prod' : (row.environment as ApiKeyEnvironment),
     isActive: row.is_active,
-    usageCount: row.usage_count,
-    rateLimit: row.rate_limit,
     createdAt: row.created_at,
     tier: row.tier,
     monthlyQuota: row.monthly_quota,
@@ -28,7 +28,7 @@ function rowToApiKey(row: ApiKeyRow): ApiKey {
  */
 export async function findApiKeyByHash(keyHash: string): Promise<ApiKey | null> {
   const result = await DB.query<ApiKeyRow>(
-    `SELECT id, key_hash, name, environment, is_active, usage_count, rate_limit,
+    `SELECT id, key_hash, name, email, environment, is_active,
             created_at, tier, monthly_quota, monthly_usage, quota_reset_at
      FROM api_keys
      WHERE key_hash = $1`,
@@ -52,11 +52,19 @@ export async function findApiKeyByRawKey(rawKey: string): Promise<ApiKey | null>
 }
 
 /**
- * Increment usage count for an API key
+ * Increment monthly usage count for an API key securely (atomic).
  * Called after each successful authenticated request
+ * Returns true if successfully incremented (under quota), false if out of quota.
  */
-export async function incrementUsage(keyId: number): Promise<void> {
-  await DB.query('UPDATE api_keys SET usage_count = usage_count + 1 WHERE id = $1', [keyId]);
+export async function incrementMonthlyUsage(keyId: number): Promise<boolean> {
+  const result = await DB.query(
+    `UPDATE api_keys
+     SET monthly_usage = monthly_usage + 1
+     WHERE id = $1 AND monthly_usage < monthly_quota
+     RETURNING id`,
+    [keyId],
+  );
+  return result.rowCount !== null && result.rowCount > 0;
 }
 
 /**
@@ -66,22 +74,18 @@ export async function incrementUsage(keyId: number): Promise<void> {
  * @param rawKey - The raw API key (will be hashed)
  * @param name - Human-readable name for the key
  * @param environment - 'dev' or 'prod'
- * @param rateLimit - Optional custom rate limit (default: 100)
  */
-export async function createApiKey(
-  rawKey: string,
-  name: string,
-  environment: ApiKeyEnvironment,
-  rateLimit: number = 100,
-): Promise<ApiKey> {
+export async function createApiKey(rawKey: string, name: string, environment: ApiKeyEnvironment): Promise<ApiKey> {
   const keyHash = hashApiKey(rawKey);
+  // Map App 'prod' to DB 'live'
+  const dbEnv = environment === 'prod' ? 'live' : environment;
 
   const result = await DB.query<ApiKeyRow>(
-    `INSERT INTO api_keys (key_hash, name, environment, rate_limit, tier, monthly_quota, monthly_usage, quota_reset_at)
-     VALUES ($1, $2, $3, $4, 'FREE', 100, 0, NOW())
-     RETURNING id, key_hash, name, environment, is_active, usage_count, rate_limit,
+    `INSERT INTO api_keys (key_hash, name, email, environment, tier, monthly_quota, monthly_usage, quota_reset_at)
+     VALUES ($1, $2, 'legacy@example.com', $3, 'FREE', 100, 0, NOW())
+     RETURNING id, key_hash, name, email, environment, is_active,
                created_at, tier, monthly_quota, monthly_usage, quota_reset_at`,
-    [keyHash, name, environment, rateLimit],
+    [keyHash, name, dbEnv],
   );
 
   return rowToApiKey(result.rows[0]);
@@ -95,9 +99,46 @@ export async function deactivateApiKey(keyId: number): Promise<void> {
 }
 
 /**
- * Reset usage count for an API key
- * Useful for billing cycle resets
+ * Find an active API key by email
  */
-export async function resetUsageCount(keyId: number): Promise<void> {
-  await DB.query('UPDATE api_keys SET usage_count = 0 WHERE id = $1', [keyId]);
+export async function findActiveByEmail(email: string): Promise<ApiKey | null> {
+  const result = await DB.query<ApiKeyRow>(
+    `SELECT id, key_hash, name, email, environment, is_active,
+            created_at, tier, monthly_quota, monthly_usage, quota_reset_at
+     FROM api_keys
+     WHERE email = $1 AND is_active = TRUE`,
+    [email],
+  );
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  return rowToApiKey(result.rows[0]);
+}
+
+/**
+ * Insert a provisioned key
+ * Note: Performs NO hashing or logic, only executes SQL.
+ */
+export async function insertProvisionedKey(
+  keyHash: string,
+  input: CreateApiKeyInput,
+  quotaResetAt: Date,
+): Promise<ApiKey> {
+  // Map App 'prod' to DB 'live'
+  const dbEnv = input.environment === 'prod' ? 'live' : input.environment;
+
+  const result = await DB.query<ApiKeyRow>(
+    `INSERT INTO api_keys (
+       key_hash, name, email, environment, tier,
+       monthly_quota, monthly_usage, quota_reset_at, is_active
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, 0, $7, TRUE)
+     RETURNING id, key_hash, name, email, environment, is_active,
+               created_at, tier, monthly_quota, monthly_usage, quota_reset_at`,
+    [keyHash, input.name, input.email, dbEnv, input.tier, input.monthlyQuota, quotaResetAt],
+  );
+
+  return rowToApiKey(result.rows[0]);
 }
