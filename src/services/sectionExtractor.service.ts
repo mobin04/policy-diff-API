@@ -37,21 +37,29 @@ export function extractSections(html: string): Section[] {
   const partialSections: PartialSection[] = [];
   let currentSection: PartialSection = { title: 'general', content: '' };
 
-  // Use cheerio's AnyNode type for traverse function
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function traverse(node: any): void {
+  function traverse(node: unknown): void {
+    if (!node || typeof node !== 'object') return;
+
+    const nodeObj = node as Record<string, unknown>;
+    const type = typeof nodeObj.type === 'string' ? nodeObj.type : undefined;
+    const name = typeof nodeObj.name === 'string' ? nodeObj.name : undefined;
+    const children = Array.isArray(nodeObj.children) ? nodeObj.children : undefined;
+
     // Skip script and style elements
-    if (node.type === 'script' || node.type === 'style' || node.name === 'script' || node.name === 'style') {
+    if (type === 'script' || type === 'style' || name === 'script' || name === 'style') {
       return;
     }
 
-    if (node.type === 'text') {
-      const text = $(node).text().replace(/\s+/g, ' ').trim();
+    if (type === 'text') {
+      const text = $(node as cheerio.Element)
+        .text()
+        .replace(/\s+/g, ' ')
+        .trim();
       if (text) {
         currentSection.content += (currentSection.content ? ' ' : '') + text;
       }
-    } else if (node.type === 'tag') {
-      if (['h1', 'h2', 'h3'].includes(node.name)) {
+    } else if (type === 'tag') {
+      if (name && ['h1', 'h2', 'h3'].includes(name)) {
         // Push previous section
         currentSection.content = currentSection.content.replace(/\s+/g, ' ').trim();
         if (currentSection.content || currentSection.title !== 'general') {
@@ -60,15 +68,18 @@ export function extractSections(html: string): Section[] {
 
         // Start new section
         currentSection = {
-          title: $(node).text().toLowerCase().trim(),
+          title: $(node as cheerio.Element)
+            .text()
+            .toLowerCase()
+            .trim(),
           content: '',
         };
-      } else if (node.children) {
-        node.children.forEach((child: unknown) => traverse(child));
+      } else if (children) {
+        children.forEach((child) => traverse(child));
       }
-    } else if (node.children) {
+    } else if (children) {
       // Handle root or other node types
-      node.children.forEach((child: unknown) => traverse(child));
+      children.forEach((child) => traverse(child));
     }
   }
 

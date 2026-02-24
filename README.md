@@ -21,8 +21,9 @@ This document provides a comprehensive overview of the PolicyDiff system archite
 13. [Local Development Setup](#13-local-development-setup)
 14. [Environment Variables](#14-environment-variables)
 15. [Design Principles](#15-design-principles)
-16. [Roadmap](#16-roadmap)
-17. [License](#17-license)
+16. [Deterministic Replay Validation](#16-deterministic-replay-validation)
+17. [Roadmap](#17-roadmap)
+18. [License](#18-license)
 
 ## 1. Project Overview
 
@@ -704,7 +705,32 @@ The following environment variables must be configured in a `.env.config` file:
 -   **No UI Until Necessary**: Focus on a robust, API-first architecture.
 -   **Predictable JSON Contract**: Maintain a stable and well-documented API contract.
 
-## 16. Roadmap
+## 16. Deterministic Replay Validation
+
+PolicyDiff guarantees deterministic behavior through a replay validation system.
+
+A snapshot can be replayed multiple times to verify:
+
+- Hash stability
+- Section extraction stability
+- Risk engine consistency
+
+CLI:
+
+```sh
+npx ts-node scripts/replay-validate.ts <snapshotId> 20
+```
+
+Failure indicates pipeline instability and must block deployment.
+
+Before deployment:
+- Capture ≥20 real-world policy snapshots
+- Run replay validation with ≥20 runs each
+- Deployment blocked on any failure
+
+This implementation only helps the developers and system operators directly. It is an internal quality assurance tool, not a feature for end-users.
+
+## 17. Roadmap
 
 -   **Distributed Job Queue**: Migrate from the PostgreSQL-based queue to a scalable solution like BullMQ with Redis to support multi-instance deployments.
 -   **Webhooks**: Implement webhooks to notify clients upon job completion, removing the need for polling.
@@ -768,6 +794,6 @@ Track your quota consumption via `GET /v1/usage`.
 - **Single Instance**: The current concurrency guard and rate limiting are in-memory. Horizontal scaling is not supported in the current version.
 - **Polling**: Real-time webhooks are on the roadmap; polling is currently required for job results.
 
-## 17. License
+## 18. License
 
 This project is licensed under the ISC License.

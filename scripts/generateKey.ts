@@ -47,7 +47,6 @@ async function main() {
     console.log('========================================\n');
     console.log('Name:', apiKey.name);
     console.log('Environment:', apiKey.environment);
-    console.log('Rate Limit:', apiKey.rateLimit);
     console.log('\n⚠️  IMPORTANT: Save this key now. It will NOT be shown again!\n');
     console.log('API Key:', rawKey);
     console.log('\n========================================\n');
