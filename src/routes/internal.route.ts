@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { getInternalMetrics } from '../repositories/metrics.repository';
 import { INTERNAL_METRICS_TOKEN } from '../config';
+import { provisionHandler } from '../controllers/internal.controller';
 
 /**
  * Internal routes for metrics and system observability
@@ -26,4 +27,12 @@ export async function internalRoutes(fastify: FastifyInstance) {
     const metrics = await getInternalMetrics();
     reply.send(metrics);
   });
+
+  /**
+   * POST /v1/internal/provision
+   *
+   * Protected by X-Provision-Secret header.
+   * Provisions a new API key.
+   */
+  fastify.post('/internal/provision', provisionHandler);
 }

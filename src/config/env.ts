@@ -52,10 +52,10 @@ export const PORT = getRequiredInt('PORT', 3000);
 export const DATABASE_URL = getRequiredEnv('DATABASE_URL');
 export const API_SECRET = getRequiredEnv('API_SECRET');
 export const INTERNAL_METRICS_TOKEN = getRequiredEnv('INTERNAL_METRICS_TOKEN');
+export const PROVISION_SECRET = getRequiredEnv('PROVISION_SECRET');
 
 // Rate Limiting (Configurable via env)
 export const GLOBAL_RATE_LIMIT = getRequiredInt('GLOBAL_RATE_LIMIT', 1000);
-export const PER_KEY_RATE_LIMIT = getRequiredInt('PER_KEY_RATE_LIMIT', 100);
 
 // Logging
 export const LOG_LEVEL = process.env.LOG_LEVEL || (IS_PRODUCTION ? 'info' : 'debug');

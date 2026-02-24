@@ -193,6 +193,45 @@ export class InvalidPageContentError extends ApiError {
 }
 
 /**
+ * Provision Secret Invalid Error
+ * Thrown when the X-Provision-Secret header doesn't match the required env var.
+ */
+export class ProvisionSecretInvalidError extends ApiError {
+  readonly statusCode = 403;
+
+  constructor(message = 'Invalid provision secret') {
+    super(message);
+    this.name = 'PROVISION_SECRET_INVALID';
+  }
+}
+
+/**
+ * Invalid Email Error
+ * Thrown when an invalid email is provided during provisioning.
+ */
+export class InvalidEmailError extends ApiError {
+  readonly statusCode = 400;
+
+  constructor(message = 'Invalid email address provided') {
+    super(message);
+    this.name = 'INVALID_EMAIL';
+  }
+}
+
+/**
+ * API Key Already Exists Error
+ * Thrown if there is already an active key for the given email.
+ */
+export class ApiKeyAlreadyExistsError extends ApiError {
+  readonly statusCode = 409;
+
+  constructor(message = 'An active API key already exists for this email') {
+    super(message);
+    this.name = 'API_KEY_ALREADY_EXISTS';
+  }
+}
+
+/**
  * Type guard to check if an error is a custom API error
  */
 export function isApiError(error: unknown): error is ApiError {
