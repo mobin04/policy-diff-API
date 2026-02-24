@@ -1,8 +1,9 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { provisionApiKey } from '../services/provisioning.service';
-import { PROVISION_SECRET } from '../config/env';
+import { validateSnapshotDeterminism } from '../services/replayValidator.service';
+import { PROVISION_SECRET } from '../config';
 import { InvalidEmailError, ProvisionSecretInvalidError } from '../errors';
-import { ApiKeyEnvironment } from '../types';
+// import { ApiKeyEnvironment } from '../types';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -53,4 +54,16 @@ export async function provisionHandler(request: FastifyRequest<{ Body: Provision
     apiKey: rawKey,
     warning: 'Store this key securely. It will not be shown again.',
   };
+}
+
+export async function replayHandler(request: FastifyRequest<{ Params: { snapshotId: string } }>, reply: FastifyReply) {
+  const { snapshotId } = request.params;
+
+  try {
+    // Optional endpoint calls validateSnapshotDeterminism exactly 5 times as specified
+    await validateSnapshotDeterminism(snapshotId, 5);
+    return { status: 'PASS' };
+  } catch (err: unknown) {
+    reply.status(500).send({ error: 'NON_DETERMINISTIC_PIPELINE_DETECTED' });
+  }
 }
