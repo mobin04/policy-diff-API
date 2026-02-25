@@ -7,12 +7,15 @@ import { generateDateMaskedHash } from './hash.service';
 import { canonicalizeUrl } from '../utils/canonicalizeUrl';
 import { DiffResult, CheckResult } from '../types';
 import { analyzeRisk } from './riskEngine.service';
+import { detectIsolationDrift } from './isolationStability.service';
 
 /**
  * Logger interface for debug output
  */
 type Logger = {
   debug: (obj: object, msg: string) => void;
+  info: (obj: object, msg: string) => void;
+  warn: (obj: object, msg: string) => void;
 };
 
 /**
@@ -49,31 +52,31 @@ export async function checkPage(rawUrl: string, options: CheckPageOptions = {}):
     logger.debug({ rawUrl, canonicalUrl, minInterval }, 'URL canonicalized');
   }
 
+  const pageInfo = await getPageInfo(canonicalUrl);
+
   // OPTIMIZATION 1: Check cooldown if minInterval specified
-  if (minInterval && minInterval > 0) {
-    const pageInfo = await getPageInfo(canonicalUrl);
+  if (minInterval && minInterval > 0 && pageInfo) {
+    const cooldownStatus = await checkCooldown(pageInfo.id, minInterval);
 
-    if (pageInfo) {
-      const cooldownStatus = await checkCooldown(pageInfo.id, minInterval);
-
-      if (cooldownStatus.inCooldown) {
-        if (logger) {
-          logger.debug(
-            { canonicalUrl, lastCheckedAt: cooldownStatus.lastCheckedAt },
-            'Cooldown active, returning cached result',
-          );
-        }
-
-        // Return cached result if available, otherwise generic skip response
-        return {
-          status: 'skipped',
-          reason: 'Cooldown active',
-          last_checked: cooldownStatus.lastCheckedAt?.toISOString(),
-          result: cooldownStatus.lastResult ?? undefined,
-        };
+    if (cooldownStatus.inCooldown) {
+      if (logger) {
+        logger.debug(
+          { canonicalUrl, lastCheckedAt: cooldownStatus.lastCheckedAt },
+          'Cooldown active, returning cached result',
+        );
       }
+
+      // Return cached result if available, otherwise generic skip response
+      return {
+        status: 'skipped',
+        reason: 'Cooldown active',
+        last_checked: cooldownStatus.lastCheckedAt?.toISOString(),
+        result: cooldownStatus.lastResult ?? undefined,
+      };
     }
   }
+
+  const previousFingerprint = pageInfo?.isolationFingerprint ?? null;
 
   // Fetch and process page
   const rawHtml = await fetchPage(canonicalUrl);
@@ -82,7 +85,22 @@ export async function checkPage(rawUrl: string, options: CheckPageOptions = {}):
   const cleanedHtml = normalizeHtml(rawHtml);
 
   // Content Isolation Layer
-  const { html: isolatedHtml, status: isolationStatus } = extractMainContent(cleanedHtml);
+  const isolationResult = extractMainContent(cleanedHtml);
+  const isolatedHtml = isolationResult.content;
+  const isolationStatus = isolationResult.usedFallback ? 'fallback' : 'success';
+
+  const driftDetected = detectIsolationDrift(previousFingerprint, isolationResult.fingerprint);
+
+  if (driftDetected && logger) {
+    logger.warn(
+      {
+        previous_fingerprint: previousFingerprint,
+        current_fingerprint: isolationResult.fingerprint,
+        canonical_url: canonicalUrl,
+      },
+      'ISOLATION_CONTAINER_DRIFT_DETECTED',
+    );
+  }
 
   const normalizedContent = normalizeContent(isolatedHtml);
   const sections = extractSections(isolatedHtml);
@@ -105,11 +123,13 @@ export async function checkPage(rawUrl: string, options: CheckPageOptions = {}):
     diffResult = {
       message: 'First snapshot stored',
       content_isolation: isolationStatus,
+      isolation_drift: driftDetected,
     };
   } else if (saveResult.status === 'unchanged') {
     diffResult = {
       message: 'No meaningful change detected',
       content_isolation: isolationStatus,
+      isolation_drift: driftDetected,
     };
   } else {
     const changes = saveResult.changes || [];
@@ -120,11 +140,12 @@ export async function checkPage(rawUrl: string, options: CheckPageOptions = {}):
       risk_level: riskAnalysis.risk_level,
       changes: riskAnalysis.changes,
       content_isolation: isolationStatus,
+      isolation_drift: driftDetected,
     };
   }
 
   // Cache the result for future cooldown checks
-  await updatePageCache(saveResult.pageId, diffResult);
+  await updatePageCache(saveResult.pageId, diffResult, isolationResult.fingerprint);
 
   return {
     status: 'processed',

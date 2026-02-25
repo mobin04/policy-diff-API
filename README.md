@@ -673,6 +673,23 @@ This ensures resilience across unexpected errors: if a `releaseJob()` call is mi
 
 > **Note**: This does NOT make the system multi-instance safe. The concurrency guard remains a single-instance in-memory mechanism.
 
+### Isolation Stability Instrumentation
+
+PolicyDiff tracks deterministic container selection metadata.
+Each isolation decision generates a fingerprint based on:
+- Selected container
+- Text length
+
+If container selection changes between runs,
+a structured drift event is logged and exposed via metrics.
+
+This helps detect false-positive risk caused by layout shifts.
+
+Clarify:
+Isolation drift does NOT fail jobs.
+It is observability instrumentation only.
+
+
 ## 13. Local Development Setup
 
 1.  **Node.js**: Requires Node.js v20 or later.

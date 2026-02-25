@@ -7,6 +7,7 @@ import { generateHash } from '../utils/hash';
 import { canonicalizeUrl } from '../utils/canonicalizeUrl';
 import { diffSections } from './differ.service';
 import { analyzeRisk } from './riskEngine.service';
+import { detectIsolationDrift } from './isolationStability.service';
 import {
   acquireJob,
   releaseJob,
@@ -47,6 +48,7 @@ const MAX_CONCURRENT_JOBS_PER_KEY = 2;
 type Logger = {
   debug: (obj: object, msg: string) => void;
   info: (obj: object, msg: string) => void;
+  warn: (obj: object, msg: string) => void;
   error: (obj: object, msg: string) => void;
 };
 
@@ -253,8 +255,11 @@ export async function processMonitorJob(jobId: string, logger?: Logger): Promise
       logger.debug({ jobId, pageId: job.pageId }, 'Job processing started');
     }
 
-    // Get page URL from database
-    const pageResult = await DB.query<{ url: string }>('SELECT url FROM pages WHERE id = $1', [job.pageId]);
+    // Get page details from database
+    const pageResult = await DB.query<{ url: string; isolation_fingerprint: string | null }>(
+      'SELECT url, isolation_fingerprint FROM pages WHERE id = $1',
+      [job.pageId],
+    );
 
     if (pageResult.rows.length === 0) {
       await markJobFailed(jobId, 'INTERNAL_ERROR');
@@ -264,7 +269,7 @@ export async function processMonitorJob(jobId: string, logger?: Logger): Promise
       return;
     }
 
-    const url = pageResult.rows[0].url;
+    const { url, isolation_fingerprint: previousFingerprint } = pageResult.rows[0];
 
     // Timeout enforcement: MAX_JOB_RUNTIME_MS (15000)
     const controller = new AbortController();
@@ -278,7 +283,7 @@ export async function processMonitorJob(jobId: string, logger?: Logger): Promise
     try {
       // Execute the monitoring pipeline with timeout and abortion support
       const result = await Promise.race([
-        executeMonitoringPipeline(job.pageId, url, controller.signal, logger),
+        executeMonitoringPipeline(job.pageId, url, previousFingerprint, controller.signal, logger),
         timeoutPromise,
       ]);
 
@@ -325,6 +330,7 @@ export async function processMonitorJob(jobId: string, logger?: Logger): Promise
  *
  * @param pageId - Database ID of the page
  * @param url - Canonical URL to fetch
+ * @param previousFingerprint - Isolation fingerprint from previous run
  * @param signal - AbortSignal for timeout/cancellation
  * @param logger - Optional logger
  * @returns DiffResult with analysis
@@ -332,6 +338,7 @@ export async function processMonitorJob(jobId: string, logger?: Logger): Promise
 async function executeMonitoringPipeline(
   pageId: number,
   url: string,
+  previousFingerprint: string | null,
   signal: AbortSignal,
   logger?: Logger,
 ): Promise<DiffResult> {
@@ -342,7 +349,22 @@ async function executeMonitoringPipeline(
   const cleanedHtml = normalizeHtml(rawHtml);
 
   // Content Isolation Layer
-  const { html: isolatedHtml, status: isolationStatus } = extractMainContent(cleanedHtml);
+  const isolationResult = extractMainContent(cleanedHtml);
+  const isolatedHtml = isolationResult.content;
+  const isolationStatus = isolationResult.usedFallback ? 'fallback' : 'success';
+
+  const driftDetected = detectIsolationDrift(previousFingerprint, isolationResult.fingerprint);
+
+  if (driftDetected && logger) {
+    logger.warn(
+      {
+        previous_fingerprint: previousFingerprint,
+        current_fingerprint: isolationResult.fingerprint,
+        canonical_url: url,
+      },
+      'ISOLATION_CONTAINER_DRIFT_DETECTED',
+    );
+  }
 
   // Normalize and extract sections
   const normalizedContent = normalizeContent(isolatedHtml);
@@ -351,7 +373,7 @@ async function executeMonitoringPipeline(
 
   if (logger) {
     logger.debug(
-      { pageId, contentHash, sectionCount: sections.length, isolationStatus },
+      { pageId, contentHash, sectionCount: sections.length, isolationStatus, driftDetected },
       'Content processed',
     );
   }
@@ -385,6 +407,7 @@ async function executeMonitoringPipeline(
       diffResult = {
         message: 'No meaningful change detected',
         content_isolation: isolationStatus,
+        isolation_drift: driftDetected,
       };
     } else {
       // Calculate diff
@@ -394,6 +417,7 @@ async function executeMonitoringPipeline(
         diffResult = {
           message: 'No meaningful change detected',
           content_isolation: isolationStatus,
+          isolation_drift: driftDetected,
         };
       } else {
         // Analyze risk
@@ -404,6 +428,7 @@ async function executeMonitoringPipeline(
           risk_level: riskAnalysis.risk_level,
           changes: riskAnalysis.changes,
           content_isolation: isolationStatus,
+          isolation_drift: driftDetected,
         };
 
         // Store new version
@@ -427,13 +452,15 @@ async function executeMonitoringPipeline(
     diffResult = {
       message: 'First snapshot stored',
       content_isolation: isolationStatus,
+      isolation_drift: driftDetected,
     };
   }
 
-  // Update page cache
-  await DB.query('UPDATE pages SET last_checked_at = NOW(), last_result = $2 WHERE id = $1', [
+  // Update page cache and fingerprint
+  await DB.query('UPDATE pages SET last_checked_at = NOW(), last_result = $2, isolation_fingerprint = $3 WHERE id = $1', [
     pageId,
     JSON.stringify(diffResult),
+    isolationResult.fingerprint,
   ]);
 
   return diffResult;

@@ -19,6 +19,7 @@ export type PageInfo = {
   id: number;
   lastCheckedAt: Date | null;
   lastResult: DiffResult | null;
+  isolationFingerprint: string | null;
 };
 
 /**
@@ -47,7 +48,7 @@ export async function ensurePageExists(url: string, client?: typeof DB | { query
  * @returns Page info or null if page doesn't exist
  */
 export async function getPageInfo(url: string): Promise<PageInfo | null> {
-  const result = await DB.query('SELECT id, last_checked_at, last_result FROM pages WHERE url = $1', [url]);
+  const result = await DB.query('SELECT id, last_checked_at, last_result, isolation_fingerprint FROM pages WHERE url = $1', [url]);
 
   if (result.rows.length === 0) {
     return null;
@@ -58,6 +59,7 @@ export async function getPageInfo(url: string): Promise<PageInfo | null> {
     id: row.id,
     lastCheckedAt: row.last_checked_at,
     lastResult: row.last_result as DiffResult | null,
+    isolationFingerprint: row.isolation_fingerprint as string | null,
   };
 }
 
@@ -71,18 +73,19 @@ export async function getPageInfo(url: string): Promise<PageInfo | null> {
 export async function checkCooldown(
   pageId: number,
   minIntervalMinutes: number,
-): Promise<{ inCooldown: boolean; lastCheckedAt: Date | null; lastResult: DiffResult | null }> {
-  const result = await DB.query('SELECT last_checked_at, last_result FROM pages WHERE id = $1', [pageId]);
+): Promise<{ inCooldown: boolean; lastCheckedAt: Date | null; lastResult: DiffResult | null; isolationFingerprint: string | null }> {
+  const result = await DB.query('SELECT last_checked_at, last_result, isolation_fingerprint FROM pages WHERE id = $1', [pageId]);
 
   if (result.rows.length === 0) {
-    return { inCooldown: false, lastCheckedAt: null, lastResult: null };
+    return { inCooldown: false, lastCheckedAt: null, lastResult: null, isolationFingerprint: null };
   }
 
   const lastCheckedAt = result.rows[0].last_checked_at as Date | null;
   const lastResult = result.rows[0].last_result as DiffResult | null;
+  const isolationFingerprint = result.rows[0].isolation_fingerprint as string | null;
 
   if (!lastCheckedAt) {
-    return { inCooldown: false, lastCheckedAt: null, lastResult };
+    return { inCooldown: false, lastCheckedAt: null, lastResult, isolationFingerprint };
   }
 
   const cooldownMs = minIntervalMinutes * 60 * 1000;
@@ -92,17 +95,26 @@ export async function checkCooldown(
     inCooldown: timeSinceLastCheck < cooldownMs,
     lastCheckedAt,
     lastResult,
+    isolationFingerprint,
   };
 }
 
 /**
  * Update page's last check time and cached result
  */
-export async function updatePageCache(pageId: number, result: DiffResult): Promise<void> {
-  await DB.query('UPDATE pages SET last_checked_at = NOW(), last_result = $2 WHERE id = $1', [
-    pageId,
-    JSON.stringify(result),
-  ]);
+export async function updatePageCache(pageId: number, result: DiffResult, isolationFingerprint?: string): Promise<void> {
+  if (isolationFingerprint) {
+    await DB.query('UPDATE pages SET last_checked_at = NOW(), last_result = $2, isolation_fingerprint = $3 WHERE id = $1', [
+      pageId,
+      JSON.stringify(result),
+      isolationFingerprint,
+    ]);
+  } else {
+    await DB.query('UPDATE pages SET last_checked_at = NOW(), last_result = $2 WHERE id = $1', [
+      pageId,
+      JSON.stringify(result),
+    ]);
+  }
 }
 
 /**
