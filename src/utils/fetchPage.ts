@@ -48,6 +48,7 @@ export async function fetchPage(url: string, signal?: AbortSignal): Promise<stri
 
         // Specialized handling for blocking
         if (status === 403 || status === 429) {
+          // console.log('something gonna wrong');
           throw new PageAccessBlockedError();
         }
 
