@@ -10,6 +10,7 @@ export type SavePageResult = {
   status: 'unchanged' | 'first_version' | 'changed';
   pageId: number;
   changes?: Change[];
+  numericOverrideTriggered?: boolean;
 };
 
 /**
@@ -169,12 +170,13 @@ export async function savePage(
     }
 
     // Calculate diff between old and new sections
-    const changes = diffSections(latestSections, sections);
+    const changes = diffSections(latestSections, sections, { url });
+    const numericOverrideTriggered = (changes as any).numeric_override_triggered === true;
 
     // OPTIMIZATION: If no meaningful changes detected, treat as unchanged
     // This handles cases where hash differs but content is semantically same
     if (changes.length === 0) {
-      return { status: 'unchanged', pageId };
+      return { status: 'unchanged', pageId, numericOverrideTriggered };
     }
 
     await DB.query('INSERT INTO page_versions (page_id, content, content_hash, sections) VALUES ($1, $2, $3, $4)', [
@@ -184,7 +186,7 @@ export async function savePage(
       JSON.stringify(sections),
     ]);
 
-    return { status: 'changed', pageId, changes };
+    return { status: 'changed', pageId, changes, numericOverrideTriggered };
   }
 
   // First version - only when NO versions exist for this page_id

@@ -411,13 +411,15 @@ async function executeMonitoringPipeline(
       };
     } else {
       // Calculate diff
-      const changes = diffSections(latestSections, sections);
+      const changes = diffSections(latestSections, sections, { url, logger });
+      const numericOverrideTriggered = (changes as any).numeric_override_triggered === true;
 
       if (changes.length === 0) {
         diffResult = {
           message: 'No meaningful change detected',
           content_isolation: isolationStatus,
           isolation_drift: driftDetected,
+          numeric_override_triggered: numericOverrideTriggered,
         };
       } else {
         // Analyze risk
@@ -429,6 +431,7 @@ async function executeMonitoringPipeline(
           changes: riskAnalysis.changes,
           content_isolation: isolationStatus,
           isolation_drift: driftDetected,
+          numeric_override_triggered: numericOverrideTriggered,
         };
 
         // Store new version

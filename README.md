@@ -689,6 +689,19 @@ Clarify:
 Isolation drift does NOT fail jobs.
 It is observability instrumentation only.
 
+### Numeric Override Integrity
+
+PolicyDiff treats numeric changes as meaningful.
+
+To reduce formatting-based false positives:
+- Thousand separators are normalized
+- Currency symbols are ignored
+- Percentage symbols are normalized
+- Version numbers are excluded
+- Numeric comparison is index-based and deterministic
+
+Numeric override triggers are logged and exposed via internal metrics.
+
 
 ## 13. Local Development Setup
 

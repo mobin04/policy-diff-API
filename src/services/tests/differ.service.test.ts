@@ -150,8 +150,35 @@ describe('Structural Diff Engine Tests', () => {
     ];
     const changes = diffSections(oldSections, newSections);
 
-    // N1 matches O1, N2 matches O2 (or vice versa)
-    // Result should be 2 TITLE_RENAMED
     expect(changes.filter((c) => c.type === 'TITLE_RENAMED')).toHaveLength(2);
+  });
+
+  // 10. Numeric Override Integrity Hardening
+  test('should ignore formatting changes but trigger on value changes', () => {
+    // Case A: Formatting only ($1,000 vs $1000) -> NOT meaningful (below threshold)
+    const longContent1 = 'A'.repeat(1000) + ' The fee is $1,000.';
+    const longContent2 = 'A'.repeat(1000) + ' The fee is $1000.'; // No comma
+    const oldSections: Section[] = [{ title: 'Fees', content: longContent1, hash: 'h1' }];
+    const newSections: Section[] = [{ title: 'Fees', content: longContent2, hash: 'h2' }];
+    
+    const changesA = diffSections(oldSections, newSections);
+    expect(changesA).toHaveLength(0); // Numeric values are same (1000), ratio < 5%
+
+    // Case B: Value change ($1,000 vs $1,001) -> Meaningful (numeric override)
+    const longContent3 = 'A'.repeat(1000) + ' The fee is $1,001.';
+    const newSectionsB: Section[] = [{ title: 'Fees', content: longContent3, hash: 'h3' }];
+    
+    const changesB = diffSections(oldSections, newSectionsB);
+    expect(changesB).toHaveLength(1); // Numeric value changed (1000 -> 1001)
+    expect(changesB[0].type).toBe('MODIFIED');
+
+    // Case C: Version numbers (1.2.3 vs 1.2.4) -> NOT meaningful (ignored as tokens, ratio < 5%)
+    const longContentV1 = 'A'.repeat(1000) + ' Version 1.2.3';
+    const longContentV2 = 'A'.repeat(1000) + ' Version 1.2.4';
+    const osV: Section[] = [{ title: 'Version', content: longContentV1, hash: 'hv1' }];
+    const nsV: Section[] = [{ title: 'Version', content: longContentV2, hash: 'hv2' }];
+    
+    const changesV = diffSections(osV, nsV);
+    expect(changesV).toHaveLength(0);
   });
 });
