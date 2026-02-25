@@ -22,7 +22,7 @@ export type SnapshotPipelineResult = {
 export function processSnapshot(rawHtml: string): SnapshotPipelineResult {
   // 1. Isolate main content
   const isolationResult = extractMainContent(rawHtml);
-  const isolatedContent = isolationResult.html;
+  const isolatedContent = isolationResult.content;
 
   // 2. Identify and mask temporal noise
   const maskedContent = maskTemporalNoise(isolatedContent);

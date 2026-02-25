@@ -43,6 +43,8 @@ export type DiffResult = {
   changes?: RiskedChange[];
   /** Isolation status for internal metrics */
   content_isolation?: 'success' | 'fallback';
+  /** True if container selection drifted since last run */
+  isolation_drift?: boolean;
 };
 
 /**

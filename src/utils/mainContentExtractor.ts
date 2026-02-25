@@ -1,4 +1,5 @@
 import * as cheerio from 'cheerio';
+import { generateHash } from './hash';
 
 /**
  * Deterministic Content Isolation Layer
@@ -12,13 +13,22 @@ import * as cheerio from 'cheerio';
  * - Focuses compliance analysis on actual document content
  */
 
+export type IsolationResult = {
+  content: string;
+  selectedSelector: string;
+  textLength: number;
+  candidateCount: number;
+  usedFallback: boolean;
+  fingerprint: string;
+};
+
 /**
  * Extract the primary policy content from raw HTML
  *
  * @param html - Raw HTML string
- * @returns Sanitized inner HTML of the chosen container, or body if none found
+ * @returns IsolationResult containing sanitized content and metadata
  */
-export function extractMainContent(html: string): { html: string; status: 'success' | 'fallback' } {
+export function extractMainContent(html: string): IsolationResult {
   const $ = cheerio.load(html);
 
   // 1. Remove irrelevant elements globally
@@ -37,23 +47,17 @@ export function extractMainContent(html: string): { html: string; status: 'succe
   $(unwantedElements.join(',')).remove();
 
   // 2. Candidate containers in priority order
-  const candidates = [
-    'main',
-    'article',
-    '[role="main"]',
-    '#content',
-    '#main',
-    '.content',
-    '.policy',
-    '.terms',
-  ];
+  const candidates = ['main', 'article', '[role="main"]', '#content', '#main', '.content', '.policy', '.terms'];
 
   let bestCandidate: cheerio.Cheerio | null = null;
   let maxTextLength = 0;
+  let selectedSelector = '';
+  let candidateCount = 0;
 
   for (const selector of candidates) {
     const elements = $(selector);
     elements.each((_, element) => {
+      candidateCount++;
       const $el = $(element);
       const text = $el.text();
       const length = text.replace(/\s+/g, '').length;
@@ -63,21 +67,33 @@ export function extractMainContent(html: string): { html: string; status: 'succe
         if (length > maxTextLength) {
           maxTextLength = length;
           bestCandidate = $el;
+          selectedSelector = selector;
         }
       }
     });
   }
 
   // 3. Fallback to body if no suitable candidate found
+  let content = '';
+  let usedFallback = false;
+
   if (bestCandidate) {
-    return {
-      html: (bestCandidate as cheerio.Cheerio).html() || '',
-      status: 'success',
-    };
+    content = (bestCandidate as cheerio.Cheerio).html() || '';
+  } else {
+    content = $('body').html() || html;
+    usedFallback = true;
+    selectedSelector = 'body';
   }
 
+  const textLength = content.replace(/<[^>]*>/g, '').replace(/\s+/g, '').length;
+  const fingerprint = generateHash(`${selectedSelector}${textLength}`);
+
   return {
-    html: $('body').html() || html,
-    status: 'fallback',
+    content,
+    selectedSelector,
+    textLength,
+    candidateCount,
+    usedFallback,
+    fingerprint,
   };
 }
