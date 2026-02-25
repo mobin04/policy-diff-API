@@ -1,5 +1,5 @@
-import { maskTemporalNoise } from './dateMasker';
-import { generateDateMaskedHash } from '../services/hash.service';
+import { maskTemporalNoise } from '../dateMasker';
+import { generateDateMaskedHash } from '../../services/hash.service';
 
 /**
  * Mandatory Test Cases (Context-Aware Temporal Noise Masking V2)
@@ -21,7 +21,10 @@ function runTests() {
   const d2 = 'Last Updated: April 5, 2026';
   assert(maskTemporalNoise(d1) === 'Last Updated: __DATE_TOKEN__', 'Date-only masking failed');
   assert(maskTemporalNoise(d2) === 'Last Updated: __DATE_TOKEN__', 'Date-only masking failed (2)');
-  assert(generateDateMaskedHash(maskTemporalNoise(d1)) === generateDateMaskedHash(maskTemporalNoise(d2)), 'Hash equality failed');
+  assert(
+    generateDateMaskedHash(maskTemporalNoise(d1)) === generateDateMaskedHash(maskTemporalNoise(d2)),
+    'Hash equality failed',
+  );
 
   // B. Expiration date (No anchor)
   const expiration = 'Authorization expires on 2026-05-20';
@@ -46,7 +49,8 @@ function runTests() {
   assert(!maskTemporalNoise(percent).includes(DATE_TOKEN), 'Percentage (10%) should NOT be masked');
 
   // G. Multiple dates in one document (Scoped to anchors)
-  const multi = 'Effective Date: 2025-01-01. Then nothing happens until 2026-01-01, which is when something happens. Revised on May 10th, 2025.';
+  const multi =
+    'Effective Date: 2025-01-01. Then nothing happens until 2026-01-01, which is when something happens. Revised on May 10th, 2025.';
   const maskedMulti = maskTemporalNoise(multi);
   assert(maskedMulti.includes('Effective Date: __DATE_TOKEN__'), 'First anchor date failed');
   assert(maskedMulti.includes('2026-01-01'), 'Date without anchor should not be masked');
