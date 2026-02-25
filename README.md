@@ -655,6 +655,24 @@ Security is a core design principle, implemented through several layers:
 -   **Observability Strategy**: The system is designed for observability with structured logging, request IDs, and health checks. In production, logs should be aggregated into a centralized logging platform (e.g., ELK Stack, Datadog, CloudWatch Logs).
 -   **Failure Recovery Strategy**: On restart, the system automatically cleans up orphaned `PROCESSING` jobs. Database backups should be performed regularly to recover from data loss.
 
+### Concurrency Reconciliation Guard
+
+PolicyDiff includes a reconciliation layer that verifies consistency between:
+
+- The in-memory concurrency counter (`activeJobs` set)
+- The database `PROCESSING` job count
+
+This runs every 10 seconds.
+
+If drift is detected:
+- The system logs a structured error with both counts
+- The in-memory counter is corrected deterministically to match the database (source of truth)
+- A repair event is logged
+
+This ensures resilience across unexpected errors: if a `releaseJob()` call is missed due to an unhandled throw or partial state mutation, the reconciliation guard self-heals within 10 seconds.
+
+> **Note**: This does NOT make the system multi-instance safe. The concurrency guard remains a single-instance in-memory mechanism.
+
 ## 13. Local Development Setup
 
 1.  **Node.js**: Requires Node.js v20 or later.

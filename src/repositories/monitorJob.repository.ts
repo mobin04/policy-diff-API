@@ -176,3 +176,19 @@ export async function markOrphanedJobsFailed(): Promise<number> {
 
   return result.rowCount ?? 0;
 }
+
+/**
+ * Count all jobs currently in PROCESSING state
+ *
+ * Used by the concurrency reconciliation guard to compare
+ * the database state against the in-memory concurrency counter.
+ *
+ * @returns Number of PROCESSING jobs in the database
+ */
+export async function countProcessingJobs(): Promise<number> {
+  const result = await DB.query<{ count: number }>(
+    "SELECT COUNT(*)::int AS count FROM monitor_jobs WHERE status = 'PROCESSING'",
+  );
+
+  return result.rows[0].count;
+}

@@ -4,6 +4,10 @@ import { initDB, DB } from './db';
 import { initializeJobService } from './services/monitorJob.service';
 import { getActiveJobCount } from './utils/concurrencyGuard';
 import { markAsInitialized } from './routes/health.route';
+import {
+  initReconciliation,
+  reconcileConcurrencyState,
+} from './services/concurrencyReconciliation.service';
 
 /**
  * Server Bootstrap and Lifecycle Management
@@ -12,7 +16,8 @@ import { markAsInitialized } from './routes/health.route';
  * 1. Secure configuration validation.
  * 2. Database initialization and migrations.
  * 3. Recovery of interrupted jobs.
- * 4. Graceful shutdown on termination signals.
+ * 4. Concurrency reconciliation guard.
+ * 5. Graceful shutdown on termination signals.
  */
 
 const start = async () => {
@@ -27,7 +32,15 @@ const start = async () => {
     await initializeJobService(app.log);
     markAsInitialized();
 
-    // 4. Start listening
+    // 4. Start concurrency reconciliation guard (every 10 seconds)
+    initReconciliation(app.log);
+    setInterval(() => {
+      reconcileConcurrencyState().catch((err: unknown) => {
+        app.log.error({ err }, 'Concurrency reconciliation failure');
+      });
+    }, 10000);
+
+    // 5. Start listening
     await app.listen({ port: PORT, host: HOST });
     app.log.info({ port: PORT, host: HOST }, 'Server started');
   } catch (err) {
