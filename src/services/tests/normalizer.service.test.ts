@@ -1,4 +1,4 @@
-import { normalizeContent } from './normalizer.service';
+import { normalizeContent } from '../normalizer.service';
 
 /**
  * Structural Normalization Unit Tests
