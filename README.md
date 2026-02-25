@@ -728,6 +728,45 @@ Before deployment:
 - Run replay validation with ≥20 runs each
 - Deployment blocked on any failure
 
+### Capturing Snapshots
+
+Snapshots can be captured internally using:
+
+```
+POST /v1/internal/snapshot
+```
+
+This endpoint:
+- Fetches raw HTML using the production fetch pipeline (timeout, redirect, and content validation all apply)
+- Stores the canonical URL and raw HTML in `replay_snapshots`
+- Returns the generated `snapshot_id`
+
+> **Note**: This endpoint is intended for development validation and pre-deployment capture only. It must never be used in automated client-facing workflows.
+
+**Example:**
+
+```sh
+curl -X POST http://localhost:3000/v1/internal/snapshot \
+  -H "Content-Type: application/json" \
+  -H "X-Internal-Token: <token>" \
+  -d '{"url":"https://example.com/privacy"}'
+```
+
+**Response:**
+
+```json
+{
+  "snapshot_id": "123e4567-e89b-12d3-a456-426614174000",
+  "url": "https://example.com/privacy"
+}
+```
+
+After capturing, use the `snapshot_id` with the replay validation CLI or endpoint:
+
+```sh
+npx ts-node scripts/replay-validate.ts 123e4567-e89b-12d3-a456-426614174000 20
+```
+
 This implementation only helps the developers and system operators directly. It is an internal quality assurance tool, not a feature for end-users.
 
 ## 17. Roadmap

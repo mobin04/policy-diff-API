@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { getInternalMetrics } from '../repositories/metrics.repository';
 import { INTERNAL_METRICS_TOKEN } from '../config';
-import { provisionHandler, replayHandler } from '../controllers/internal.controller';
+import { provisionHandler, replayHandler, createSnapshotController } from '../controllers/internal.controller';
 
 /**
  * Internal routes for metrics and system observability
@@ -54,5 +54,26 @@ export async function internalRoutes(fastify: FastifyInstance) {
 
     // Call the handler manually or pass it normally
     return replayHandler(request as Parameters<typeof replayHandler>[0], reply);
+  });
+
+  /**
+   * POST /v1/internal/snapshot
+   *
+   * Fetches a policy page and stores its raw HTML in replay_snapshots.
+   * Protected by X-Internal-Token header.
+   * Intended for pre-deployment determinism captures only.
+   */
+  fastify.post('/internal/snapshot', async (request, reply) => {
+    const token = request.headers['x-internal-token'];
+
+    if (!token || token !== INTERNAL_METRICS_TOKEN) {
+      reply.code(401).send({
+        error: 'Unauthorized',
+        message: 'Invalid or missing internal token',
+      });
+      return;
+    }
+
+    return createSnapshotController(request as Parameters<typeof createSnapshotController>[0], reply);
   });
 }
