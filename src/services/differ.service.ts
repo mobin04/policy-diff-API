@@ -1,6 +1,7 @@
 import { Section, Change, DiffDetail } from '../types';
 import { diffWords, Change as DiffChange } from 'diff';
 import levenshtein from 'fast-levenshtein';
+import { extractNumericTokens } from '../utils/numericParser';
 
 /**
  * WHY SMALL-CHANGE THRESHOLD REDUCES NOISE:
@@ -18,6 +19,23 @@ const MEANINGFUL_CHANGE_THRESHOLD = 0.05; // 5%
  * when titles are slightly reworded.
  */
 const TITLE_SIMILARITY_THRESHOLD = 0.85;
+
+/**
+ * Logger interface for structured logging
+ */
+interface Logger {
+  info: (obj: object, msg: string) => void;
+  debug: (obj: object, msg: string) => void;
+}
+
+/**
+ * Normalization result for numeric override tracking
+ */
+type MeaningfulChangeResult = {
+  isMeaningful: boolean;
+  diff?: DiffChange[];
+  numericOverrideTriggered?: boolean;
+};
 
 /**
  * Normalize text for comparison
@@ -92,43 +110,47 @@ function calculateChangeRatio(oldText: string, newText: string): { ratio: number
 }
 
 /**
- * Extracts and normalizes numeric tokens from text for deterministic comparison.
- * Handles currency, percentages, durations, and standalone numbers.
- */
-export function extractNumericTokens(text: string): string[] {
-  const NUMERIC_TOKEN_REGEX =
-    /([$€£]\s?\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?\s?%|\d+(?:\.\d+)?\s?(?:days?|months?|years?)|\b\d+(?:,\d{3})*(?:\.\d+)?\b)/gi;
-
-  const matches = text.match(NUMERIC_TOKEN_REGEX) || [];
-
-  return matches.map((token) => {
-    return token
-      .toLowerCase()
-      .replace(/,/g, '')
-      .replace(/\s+/g, '')
-      .replace(/days?$/, 'day')
-      .replace(/months?$/, 'month')
-      .replace(/years?$/, 'year');
-  });
-}
-
-/**
  * Check if a modification is meaningful and return diff parts if so.
- * Implements an override for numeric changes to ensure high-impact numeric updates
- * are always flagged even if they fall below the ratio threshold.
+ * Implements a refined override for numeric changes to ensure high-impact numeric updates
+ * are always flagged while ignoring formatting, currency shifts, and version numbers.
+ *
+ * Deterministic index-based comparison:
+ * - Trigger ONLY when length of numeric values changes OR any numericValue at same index differs.
  */
-function getMeaningfulChange(oldContent: string, newContent: string): { isMeaningful: boolean; diff?: DiffChange[] } {
+function getMeaningfulChange(
+  oldContent: string,
+  newContent: string,
+  context?: { url: string; title: string; logger?: Logger },
+): MeaningfulChangeResult {
   const { ratio, diff } = calculateChangeRatio(oldContent, newContent);
 
   const oldTokens = extractNumericTokens(oldContent);
   const newTokens = extractNumericTokens(newContent);
 
+  // Compare normalized numericValue arrays using index-based comparison
   const numericChangeDetected =
-    oldTokens.length !== newTokens.length || oldTokens.some((token, i) => token !== newTokens[i]);
+    oldTokens.length !== newTokens.length ||
+    oldTokens.some((token, i) => token.numericValue !== newTokens[i].numericValue);
 
-  if (numericChangeDetected || ratio >= MEANINGFUL_CHANGE_THRESHOLD) {
+  if (numericChangeDetected) {
+    if (context?.logger) {
+      context.logger.info(
+        {
+          canonical_url: context.url,
+          section_title: context.title,
+          previous_values: oldTokens.map((t) => t.numericValue),
+          new_values: newTokens.map((t) => t.numericValue),
+        },
+        'NUMERIC_OVERRIDE_TRIGGERED',
+      );
+    }
+    return { isMeaningful: true, diff, numericOverrideTriggered: true };
+  }
+
+  if (ratio >= MEANINGFUL_CHANGE_THRESHOLD) {
     return { isMeaningful: true, diff };
   }
+
   return { isMeaningful: false };
 }
 
@@ -146,10 +168,16 @@ function getMeaningfulChange(oldContent: string, newContent: string): { isMeanin
  *
  * @param oldSections - Sections from previous version
  * @param newSections - Sections from current version
+ * @param context - Optional context including url and logger for telemetry
  * @returns Array of meaningful changes
  */
-export function diffSections(oldSections: Section[], newSections: Section[]): Change[] {
+export function diffSections(
+  oldSections: Section[],
+  newSections: Section[],
+  context?: { url: string; logger?: Logger },
+): Change[] {
   const changes: Change[] = [];
+  let anyNumericOverride = false;
 
   // Tracks which old sections are still available for matching
   const unmatchedOldSections = new Map(oldSections.map((s) => [s.title, s]));
@@ -164,9 +192,17 @@ export function diffSections(oldSections: Section[], newSections: Section[]): Ch
 
       if (oldSection.hash !== newSection.hash) {
         // Hash changed - check if modification is meaningful
-        const meaningfulChange = getMeaningfulChange(oldSection.content, newSection.content);
+        const meaningfulChange = getMeaningfulChange(oldSection.content, newSection.content, {
+          url: context?.url || 'unknown',
+          title: newSection.title,
+          logger: context?.logger,
+        });
 
         if (meaningfulChange.isMeaningful && meaningfulChange.diff) {
+          if (meaningfulChange.numericOverrideTriggered) {
+            anyNumericOverride = true;
+          }
+
           const details: DiffDetail[] = meaningfulChange.diff.map((part) => ({
             value: part.value,
             added: part.added === true,
@@ -207,9 +243,17 @@ export function diffSections(oldSections: Section[], newSections: Section[]): Ch
 
       // Similarity threshold met -> check content
       if (oldSection.hash !== newSection.hash) {
-        const meaningfulChange = getMeaningfulChange(oldSection.content, newSection.content);
+        const meaningfulChange = getMeaningfulChange(oldSection.content, newSection.content, {
+          url: context?.url || 'unknown',
+          title: newSection.title,
+          logger: context?.logger,
+        });
 
         if (meaningfulChange.isMeaningful && meaningfulChange.diff) {
+          if (meaningfulChange.numericOverrideTriggered) {
+            anyNumericOverride = true;
+          }
+
           const details: DiffDetail[] = meaningfulChange.diff.map((part) => ({
             value: part.value,
             added: part.added === true,
@@ -266,5 +310,11 @@ export function diffSections(oldSections: Section[], newSections: Section[]): Ch
     changes.push({ section: oldTitle, type: 'DELETED' });
   }
 
-  return changes;
+  // Use a type-safe intersection to return the numeric override metadata
+  const resultsWithMetadata = changes as Change[] & { numeric_override_triggered?: boolean };
+  if (anyNumericOverride) {
+    resultsWithMetadata.numeric_override_triggered = true;
+  }
+
+  return resultsWithMetadata;
 }

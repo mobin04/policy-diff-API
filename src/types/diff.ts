@@ -45,6 +45,8 @@ export type DiffResult = {
   content_isolation?: 'success' | 'fallback';
   /** True if container selection drifted since last run */
   isolation_drift?: boolean;
+  /** True if numeric override hardening was triggered */
+  numeric_override_triggered?: boolean;
 };
 
 /**

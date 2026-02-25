@@ -130,6 +130,7 @@ export async function checkPage(rawUrl: string, options: CheckPageOptions = {}):
       message: 'No meaningful change detected',
       content_isolation: isolationStatus,
       isolation_drift: driftDetected,
+      numeric_override_triggered: saveResult.numericOverrideTriggered,
     };
   } else {
     const changes = saveResult.changes || [];
@@ -141,6 +142,7 @@ export async function checkPage(rawUrl: string, options: CheckPageOptions = {}):
       changes: riskAnalysis.changes,
       content_isolation: isolationStatus,
       isolation_drift: driftDetected,
+      numeric_override_triggered: saveResult.numericOverrideTriggered,
     };
   }
 
