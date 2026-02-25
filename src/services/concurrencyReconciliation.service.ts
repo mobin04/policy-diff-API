@@ -19,7 +19,7 @@ import { FastifyBaseLogger } from 'fastify';
 let _logger: FastifyBaseLogger | null = null;
 
 /**
- * Initialize the reconciliation service with a structured logger.
+ * Initialized the reconciliation service with a structured logger.
  * Must be called once at startup.
  */
 export function initReconciliation(logger: FastifyBaseLogger): void {
