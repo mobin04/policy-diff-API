@@ -1,0 +1,49 @@
+npm verbose cli C:\Program Files\nodejs\node.exe C:\Program Files\nodejs\node_modules\npm\bin\npm-cli.js
+npm info using npm@10.9.2
+npm info using node@v22.16.0
+npm verbose title npm test src/services/tests/normalizer.service.test.ts
+npm verbose argv "test" "src/services/tests/normalizer.service.test.ts" "--loglevel" "verbose"
+npm verbose logfile logs-max:10 dir:C:\Users\mobin\AppData\Local\npm-cache\_logs\2026-02-25T08_48_28_635Z-
+npm verbose logfile C:\Users\mobin\AppData\Local\npm-cache\_logs\2026-02-25T08_48_28_635Z-debug-0.log
+
+> policy-diff-api@1.0.0 test
+> jest src/services/tests/normalizer.service.test.ts
+
+FAIL src/services/tests/normalizer.service.test.ts
+  Structural Normalization Tests
+    ΓêÜ should normalize single row table (14 ms)
+    ΓêÜ should normalize multiple row table (3 ms)
+    ΓêÜ should normalize unordered list (3 ms)
+    ΓêÜ should normalize ordered list (2 ms)
+    ├ù should normalize nested list with indentation (3 ms)
+    ΓêÜ should normalize mixed content (table + list) (4 ms)
+
+  ΓùÅ Structural Normalization Tests ΓÇ║ should normalize nested list with indentation
+
+    expect(received).toContain(expected) // indexOf
+
+    Expected substring: "  - Child"
+    Received string:    "- Parent - Child"
+
+      57 |     const out = normalizeContent(listNested);
+      58 |     expect(out).toContain('- Parent');
+    > 59 |     expect(out).toContain('  - Child');
+         |                 ^
+      60 |   });
+      61 |
+      62 |   // 6. Mixed table + list
+
+      at Object.<anonymous> (src/services/tests/normalizer.service.test.ts:59:17)
+
+Test Suites: 1 failed, 1 total
+Tests:       1 failed, 5 passed, 6 total
+Snapshots:   0 total
+Time:        2.508 s, estimated 3 s
+Ran all test suites matching /src\\services\\tests\\normalizer.service.test.ts/i.
+Force exiting Jest: Have you considered using `--detectOpenHandles` to detect async operations that kept running after all tests finished?
+npm verbose cwd D:\policy-diff-api
+npm verbose os Windows_NT 10.0.26200
+npm verbose node v22.16.0
+npm verbose npm  v10.9.2
+npm verbose exit 1
+npm verbose code 1

@@ -2,72 +2,89 @@ import { maskTemporalNoise } from '../dateMasker';
 import { generateDateMaskedHash } from '../../services/hash.service';
 
 /**
- * Mandatory Test Cases (Context-Aware Temporal Noise Masking V2)
+ * Context-Aware Temporal Noise Masking Unit Tests
+ *
+ * These tests verify that our date masker correctly identifies dates
+ * near anchor keywords (like 'updated' or 'effective') while protecting
+ * version numbers, prices, and percentages.
  */
 
-function assert(condition: boolean, message: string) {
-  if (!condition) {
-    throw new Error(`Assertion Failed: ${message}`);
-  }
-}
-
-function runTests() {
-  console.log('Running V2 Temporal Noise Masking Tests...');
-
+describe('Temporal Noise Masking (dateMasker)', () => {
   const DATE_TOKEN = '__DATE_TOKEN__';
 
-  // A. Date-only change
-  const d1 = 'Last Updated: March 1, 2026';
-  const d2 = 'Last Updated: April 5, 2026';
-  assert(maskTemporalNoise(d1) === 'Last Updated: __DATE_TOKEN__', 'Date-only masking failed');
-  assert(maskTemporalNoise(d2) === 'Last Updated: __DATE_TOKEN__', 'Date-only masking failed (2)');
-  assert(
-    generateDateMaskedHash(maskTemporalNoise(d1)) === generateDateMaskedHash(maskTemporalNoise(d2)),
-    'Hash equality failed',
-  );
+  describe('Context-Aware Masking', () => {
+    test('should mask dates when preceded by known anchors', () => {
+      const anchors = ['Last Updated:', 'Effective Date:', 'published:', 'date:', 'Revised on'];
+      const date = 'March 1, 2026';
 
-  // B. Expiration date (No anchor)
-  const expiration = 'Authorization expires on 2026-05-20';
-  assert(!maskTemporalNoise(expiration).includes(DATE_TOKEN), 'Expiration date should NOT be masked');
+      anchors.forEach((anchor) => {
+        const input = `${anchor} ${date}`;
+        expect(maskTemporalNoise(input)).toContain(DATE_TOKEN);
+      });
+    });
 
-  // C. Version number
-  const version = 'Policy Version 2.2.0';
-  assert(!maskTemporalNoise(version).includes(DATE_TOKEN), 'Version number should NOT be masked');
+    test('should NOT mask dates without valid anchor keywords', () => {
+      const noAnchor = 'Authorization expires on 2026-05-20';
+      expect(maskTemporalNoise(noAnchor)).not.toContain(DATE_TOKEN);
+      expect(maskTemporalNoise(noAnchor)).toContain('2026-05-20');
+    });
 
-  // D. Mixed sentence
-  const mixed = 'Version 2.0 updated March 1, 2026';
-  const maskedMixed = maskTemporalNoise(mixed);
-  assert(maskedMixed === 'Version 2.0 updated __DATE_TOKEN__', 'Mixed sentence masking failed');
-  assert(maskedMixed.includes('2.0'), 'Version number in mixed sentence should be preserved');
+    test('should handle multiple anchored dates in one document', () => {
+      const input =
+        'Effective Date: 2025-01-01. Then nothing happens until 2026-01-01, which is when something happens. Revised on May 10th, 2025.';
+      const masked = maskTemporalNoise(input);
 
-  // E. Numeric non-date
-  const money = 'Total cost is $19.99';
-  assert(!maskTemporalNoise(money).includes(DATE_TOKEN), 'Numeric non-date ($19.99) should NOT be masked');
+      expect(masked).toContain('Effective Date: __DATE_TOKEN__');
+      expect(masked).toContain('2026-01-01'); // Unanchored
+      expect(masked).toContain('Revised on __DATE_TOKEN__');
+    });
+  });
 
-  // F. Percentage
-  const percent = 'Usage limit is 10%';
-  assert(!maskTemporalNoise(percent).includes(DATE_TOKEN), 'Percentage (10%) should NOT be masked');
+  describe('Non-Date Protection', () => {
+    test('should protect version numbers (e.g., 2.2.0)', () => {
+      const input = 'Policy Version 2.2.0 updated March 1, 2026';
+      const masked = maskTemporalNoise(input);
 
-  // G. Multiple dates in one document (Scoped to anchors)
-  const multi =
-    'Effective Date: 2025-01-01. Then nothing happens until 2026-01-01, which is when something happens. Revised on May 10th, 2025.';
-  const maskedMulti = maskTemporalNoise(multi);
-  assert(maskedMulti.includes('Effective Date: __DATE_TOKEN__'), 'First anchor date failed');
-  assert(maskedMulti.includes('2026-01-01'), 'Date without anchor should not be masked');
-  assert(maskedMulti.includes('Revised on __DATE_TOKEN__'), 'Second anchor date failed');
+      expect(masked).toContain('Version 2.2.0');
+      expect(masked).toContain('updated __DATE_TOKEN__');
+    });
 
-  // H. Multi-format verification
-  const iso = 'published: 2024-12-01';
-  const numeric = 'date: 12/01/2024';
-  assert(maskTemporalNoise(iso).includes(DATE_TOKEN), 'ISO format anchor masking failed');
-  assert(maskTemporalNoise(numeric).includes(DATE_TOKEN), 'Numeric format anchor masking failed');
+    test('should protect monetary values', () => {
+      const input = 'Total cost is $19.99 updated today';
+      const masked = maskTemporalNoise(input);
 
-  console.log('All V2 Temporal Noise Masking Tests Passed.');
-}
+      expect(masked).toContain('$19.99');
+    });
 
-try {
-  runTests();
-} catch (e) {
-  console.error(e);
-  process.exit(1);
-}
+    test('should protect percentages', () => {
+      const input = 'Usage limit is 10% effective immediately';
+      const masked = maskTemporalNoise(input);
+
+      expect(masked).toContain('10%');
+    });
+  });
+
+  describe('Hash Stability', () => {
+    test('should produce identical hashes for date-only changes', () => {
+      const d1 = 'Last Updated: March 1, 2026';
+      const d2 = 'Last Updated: April 5, 2026';
+
+      const masked1 = maskTemporalNoise(d1);
+      const masked2 = maskTemporalNoise(d2);
+
+      expect(masked1).toBe(masked2);
+      expect(generateDateMaskedHash(masked1)).toBe(generateDateMaskedHash(masked2));
+    });
+  });
+
+  describe('Format Support', () => {
+    test('should support various date formats near anchors', () => {
+      const formats = ['2024-12-01', '12/01/2024', 'May 10th, 2025', 'March 1, 2026'];
+
+      formats.forEach((format) => {
+        const input = `Updated on ${format}`;
+        expect(maskTemporalNoise(input)).toBe('Updated on __DATE_TOKEN__');
+      });
+    });
+  });
+});

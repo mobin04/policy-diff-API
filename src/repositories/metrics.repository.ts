@@ -1,4 +1,5 @@
 import { DB } from '../db';
+import { getActiveJobCount } from '../utils/concurrencyGuard';
 
 export type MetricsResponse = {
   total_jobs: number;
@@ -19,6 +20,9 @@ export type MetricsResponse = {
     INTERNAL_ERROR: number;
     [key: string]: number;
   };
+  in_memory_processing_jobs: number;
+  db_processing_jobs: number;
+  concurrency_drift_detected: boolean;
 };
 
 export async function getInternalMetrics(): Promise<MetricsResponse> {
@@ -69,11 +73,14 @@ export async function getInternalMetrics(): Promise<MetricsResponse> {
     failure_breakdown[errorType] = parseInt(row.count, 10);
   });
 
+  const dbProcessingJobs = parseInt(summary.processing_jobs, 10);
+  const inMemoryProcessingJobs = getActiveJobCount();
+
   return {
     total_jobs: parseInt(summary.total_jobs, 10),
     completed_jobs: parseInt(summary.completed_jobs, 10),
     failed_jobs: parseInt(summary.failed_jobs, 10),
-    processing_jobs: parseInt(summary.processing_jobs, 10),
+    processing_jobs: dbProcessingJobs,
     average_processing_time_ms: Math.round(parseFloat(summary.average_processing_time_ms || '0')),
     high_risk_count: parseInt(summary.high_risk_count, 10),
     medium_risk_count: parseInt(summary.medium_risk_count, 10),
@@ -81,5 +88,8 @@ export async function getInternalMetrics(): Promise<MetricsResponse> {
     content_isolation_success_count: parseInt(summary.content_isolation_success_count, 10),
     content_isolation_fallback_count: parseInt(summary.content_isolation_fallback_count, 10),
     failure_breakdown: failure_breakdown as MetricsResponse['failure_breakdown'],
+    in_memory_processing_jobs: inMemoryProcessingJobs,
+    db_processing_jobs: dbProcessingJobs,
+    concurrency_drift_detected: inMemoryProcessingJobs !== dbProcessingJobs,
   };
 }

@@ -86,6 +86,8 @@ export function normalizeHtml(html: string): string {
 
 /**
  * Extracts normalized text content from HTML for hashing.
+ * Preserves structural markers (newlines and indentation) to ensure
+ * stable hashing of tables and lists.
  */
 export function normalizeContent(html: string): string {
   const normalizedHtml = normalizeHtml(html);
@@ -95,6 +97,11 @@ export function normalizeContent(html: string): string {
   const $body = $('body');
   const text = $body.length > 0 ? $body.text() : $.root().text();
 
-  // Normalize whitespace
-  return text.replace(/\s+/g, ' ').trim();
+  // Normalize whitespace line-by-line to preserve structural indentation
+  return text
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim().length > 0)
+    .join('\n')
+    .trim();
 }

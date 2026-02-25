@@ -74,7 +74,18 @@ export function isJobActive(jobId: string): boolean {
 /**
  * Clear all active jobs
  * ONLY for testing purposes - do not use in production
+ * For production reconciliation, use resetActiveJobs() instead.
  */
 export function _clearActiveJobsForTesting(): void {
+  activeJobs.clear();
+}
+
+/**
+ * Reset in-memory active jobs set.
+ * Used by the concurrency reconciliation guard when drift is detected.
+ * The database is the source of truth — this clears the in-memory set
+ * so that only genuinely active jobs re-acquire slots.
+ */
+export function resetActiveJobs(): void {
   activeJobs.clear();
 }
