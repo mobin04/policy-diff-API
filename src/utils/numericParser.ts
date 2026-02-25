@@ -18,16 +18,19 @@ export type ParsedNumericToken = {
  */
 export function extractNumericTokens(text: string): ParsedNumericToken[] {
   // Regex explanation:
-  // ([$€£]\s?\d+(?:[.,]\d+)*|\d+(?:[.,]\d+)*\s?%|\b\d+(?:[.,]\d+)*\b)
-  // This version uses (?:[.,]\d+)* to allow matching sequences of digits separated by dots or commas,
-  // which allows us to capture version numbers like 1.2.3 in a single token for filtering.
-  const NUMERIC_TOKEN_REGEX = /([$€£]\s?\d+(?:[.,]\d+)*|\d+(?:[.,]\d+)*\s?%|\b\d+(?:[.,]\d+)*\b)/gi;
+  // ([$€£]\s?[\d.,]*\d[\d.,]*|[\d.,]*\d[\d.,]*\s?%|(?:\b|^)[\d.,]*\d[\d.,]*)
+  // 1. Currency: Symbol, optional space, digits with potential dots/commas.
+  // 2. Percentage: Digits with potential dots/commas, optional space, %.
+  // 3. Numeric sequences: Starts at word boundary or start of string, captures digits and dots/commas.
+  // We use [\d.,]*\d[\d.,]* to ensure at least one digit is present in the match.
+  const NUMERIC_TOKEN_REGEX = /([$€£]\s?[\d.,]*\d[\d.,]*|[\d.,]*\d[\d.,]*\s?%|(?:\b|^)[\d.,]*\d[\d.,]*)/gi;
 
   const matches = text.match(NUMERIC_TOKEN_REGEX) || [];
   const results: ParsedNumericToken[] = [];
 
   for (const raw of matches) {
     // Ignore version numbers and tokens containing multiple dots (digit.digit.digit)
+    // This also handles tokens like '..123' or '1.2.3.4' captured by the greedy regex.
     if ((raw.match(/\./g) || []).length > 1) {
       continue;
     }
