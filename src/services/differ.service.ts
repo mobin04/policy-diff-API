@@ -310,15 +310,11 @@ export function diffSections(
     changes.push({ section: oldTitle, type: 'DELETED' });
   }
 
-  // If any numeric override triggered, we need a way to pass this up to DiffResult.
-  // One way is to inject a special change or return a tuple.
-  // But strictly, we only want to track it for metrics.
-  // Let's add a property to the changes array if we must, or rely on logging for now
-  // and update page.service to look for it.
-  // Actually, I'll mark the changes with numericOverride if it was MODIFIED by it.
+  // Use a type-safe intersection to return the numeric override metadata
+  const resultsWithMetadata = changes as Change[] & { numeric_override_triggered?: boolean };
   if (anyNumericOverride) {
-    (changes as any).numeric_override_triggered = true;
+    resultsWithMetadata.numeric_override_triggered = true;
   }
 
-  return changes;
+  return resultsWithMetadata;
 }

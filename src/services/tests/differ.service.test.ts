@@ -180,5 +180,14 @@ describe('Structural Diff Engine Tests', () => {
     
     const changesV = diffSections(osV, nsV);
     expect(changesV).toHaveLength(0);
+
+    // Case D: Identifiers with embedded numbers (v1 vs v2) -> NOT meaningful (ratio < 5%)
+    const longContentID1 = 'A'.repeat(1000) + ' Revision v1';
+    const longContentID2 = 'A'.repeat(1000) + ' Revision v2';
+    const osID: Section[] = [{ title: 'Revision', content: longContentID1, hash: 'hid1' }];
+    const nsID: Section[] = [{ title: 'Revision', content: longContentID2, hash: 'hid2' }];
+    
+    const changesID = diffSections(osID, nsID);
+    expect(changesID).toHaveLength(0);
   });
 });
