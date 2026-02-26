@@ -10,21 +10,9 @@
 
 const DATE_TOKEN = '__DATE_TOKEN__';
 
-const ANCHOR_KEYWORDS = [
-  'updated',
-  'last updated',
-  'revised',
-  'effective',
-  'published',
-  'modified',
-  'date',
-];
+const ANCHOR_KEYWORDS = ['updated', 'last updated', 'revised', 'effective', 'published', 'modified', 'date'];
 
-const VERSION_WHITELIST = [
-  /\b\d+\.\d+\.\d+\b/gi,
-  /\bv\d+\.\d+\b/gi,
-  /\bversion\s+\d+\.\d+\b/gi,
-];
+const VERSION_WHITELIST = [/\b\d+\.\d+\.\d+\b/gi, /\bv\d+\.\d+\b/gi, /\bversion\s+\d+\.\d+\b/gi];
 
 // Composite Regex covering ISO, Alpha month formats, and Numeric formats
 const DATE_PATTERNS = [
@@ -73,7 +61,7 @@ function isNearAnchor(text: string, matchStart: number, matchEnd: number): boole
 
   for (const anchor of ANCHOR_KEYWORDS) {
     const anchorLower = anchor.toLowerCase();
-    
+
     // Check if anchor exists in beforeContext or afterContext
     // Use word boundaries for single-word anchors to avoid partial matches
     if (!anchorLower.includes(' ')) {
