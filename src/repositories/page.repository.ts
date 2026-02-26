@@ -175,7 +175,13 @@ export async function savePage(
 
     // Calculate diff between old and new sections
     const changes = diffSections(latestSections, sections, { url });
-    const metadata = changes as any;
+    const metadata = changes as Change[] & {
+      numeric_override_triggered?: boolean;
+      fuzzy_match_count?: number;
+      low_confidence_fuzzy_match_count?: number;
+      fuzzy_collision_count?: number;
+      title_rename_count?: number;
+    };
     const numericOverrideTriggered = metadata.numeric_override_triggered === true;
 
     // OPTIMIZATION: If no meaningful changes detected, treat as unchanged

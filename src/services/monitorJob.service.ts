@@ -412,7 +412,13 @@ async function executeMonitoringPipeline(
     } else {
       // Calculate diff
       const changes = diffSections(latestSections, sections, { url, logger });
-      const metadata = changes as any;
+      const metadata = changes as Change[] & {
+        numeric_override_triggered?: boolean;
+        fuzzy_match_count?: number;
+        low_confidence_fuzzy_match_count?: number;
+        fuzzy_collision_count?: number;
+        title_rename_count?: number;
+      };
 
       if (changes.length === 0) {
         diffResult = {

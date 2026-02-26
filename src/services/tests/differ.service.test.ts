@@ -191,27 +191,66 @@ describe('Structural Diff Engine Tests', () => {
     expect(changesID).toHaveLength(0);
   });
 
-  // 11. Section Matching Instrumentation
-  test('should populate matching metrics in result metadata', () => {
+  // 11. Section Matching Instrumentation & Edge Cases
+  test('should accurately populate matching metrics and handle edge cases', () => {
     const oldSections: Section[] = [
       { title: 'Privacy Policy', content: 'Content 1', hash: 'h1' },
-      { title: 'Terms of Use', content: 'Content 2', hash: 'h2' },
+      { title: 'Terms of Service', content: 'Content 2', hash: 'h2' },
       { title: 'Cookie Policy', content: 'Content 3', hash: 'h3' },
     ];
+
     const newSections: Section[] = [
-      { title: 'Privacy Policy Updated', content: 'Content 1 modified...', hash: 'h1-mod' }, // Fuzzy match (high confidence)
-      { title: 'Trms of Use', content: 'Content 2 modified...', hash: 'h2-mod' }, // Fuzzy match (low confidence: 0.83 similarity roughly, wait 0.85 threshold)
-      // 'Terms of Use' (12) vs 'Trms of Use' (11) -> distance 1. 1 - 1/12 = 0.91 (high confidence)
-      // Let's use lower confidence:
-      { title: 'Cookie Pol', content: 'Content 3', hash: 'h3' }, // Rename detection
+      { title: 'Privacy Policy Updated', content: 'Content 1 modified...', hash: 'h1-mod' }, // High confidence fuzzy
+      { title: 'Terms of Servic', content: 'Content 2 modified...', hash: 'h2-mod' }, // High confidence fuzzy
+      { title: 'Cookie Rules', content: 'Content 3', hash: 'h3' }, // Rename detection
     ];
 
     const context = { url: 'test-url' };
-    const changes = diffSections(oldSections, newSections, context) as any;
+    const result = diffSections(oldSections, newSections, context) as Change[] & {
+      fuzzy_match_count: number;
+      low_confidence_fuzzy_match_count: number;
+      fuzzy_collision_count: number;
+      title_rename_count: number;
+    };
 
-    expect(changes.fuzzy_match_count).toBeGreaterThan(0);
-    expect(changes.title_rename_count).toBe(1);
-    expect(changes.low_confidence_fuzzy_match_count).toBeDefined();
-    expect(changes.fuzzy_collision_count).toBeDefined();
+    expect(result.fuzzy_match_count).toBe(2);
+    expect(result.title_rename_count).toBe(1);
+    expect(result.low_confidence_fuzzy_match_count).toBe(0);
+    expect(result.fuzzy_collision_count).toBe(0);
+  });
+
+  test('should detect fuzzy match collisions and low confidence matches', () => {
+    // FORCE COLLISION: 'ABCDEFX' matches both 'ABCDEFG' and 'ABCDEFH' with same distance
+    const os: Section[] = [
+      { title: 'ABCDEFG', content: 'C1', hash: 'h1' },
+      { title: 'ABCDEFH', content: 'C2', hash: 'h2' },
+    ];
+    const ns: Section[] = [
+      { title: 'ABCDEFX', content: 'C1 mod', hash: 'h1-mod' },
+    ];
+    // Similarity: 1 - 1/7 = 0.857 (Low confidence: 0.85-0.89)
+    
+    const result = diffSections(os, ns, { url: 'test' }) as any;
+    expect(result.fuzzy_match_count).toBe(1);
+    expect(result.fuzzy_collision_count).toBe(1);
+    expect(result.low_confidence_fuzzy_match_count).toBe(1);
+  });
+
+  test('should prioritize exact match over rename detection', () => {
+    const os: Section[] = [
+      { title: 'Exact Title', content: 'Old Content', hash: 'h1' },
+      { title: 'Other Title', content: 'Target Content', hash: 'h2' },
+    ];
+    const ns: Section[] = [
+      { title: 'Exact Title', content: 'New Content', hash: 'h3' },
+      { title: 'New Title', content: 'Target Content', hash: 'h2' },
+    ];
+
+    const result = diffSections(os, ns) as any;
+    // 'Exact Title' matches Pass 1 (Exact Title)
+    // 'New Title' matches Pass 3B (Rename)
+    expect(result.filter((c: any) => c.type === 'MODIFIED')).toHaveLength(1);
+    expect(result.filter((c: any) => c.type === 'TITLE_RENAMED')).toHaveLength(1);
+    expect(result.title_rename_count).toBe(1);
   });
 });

@@ -374,11 +374,9 @@ export function diffSections(
     changes.push({ section: oldTitle, type: 'DELETED' });
   }
 
-  // Use a type-safe intersection to return the metadata
+  // Use a type-safe intersection to return all metadata
   const resultsWithMetadata = changes as Change[] & DiffSectionsMetadata;
-  if (anyNumericOverride) {
-    resultsWithMetadata.numeric_override_triggered = true;
-  }
+  resultsWithMetadata.numeric_override_triggered = anyNumericOverride;
   resultsWithMetadata.fuzzy_match_count = metadata.fuzzy_match_count;
   resultsWithMetadata.low_confidence_fuzzy_match_count = metadata.low_confidence_fuzzy_match_count;
   resultsWithMetadata.fuzzy_collision_count = metadata.fuzzy_collision_count;
