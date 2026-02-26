@@ -1,6 +1,7 @@
 import { getIdempotencyRecord, saveIdempotencyRecord } from '../repositories/idempotency.repository';
 import { generateHash } from '../utils/hash';
 import { ConflictError } from '../errors';
+import { recordAbuseEvent } from './requestAbuse.service';
 
 /**
  * Check if a request is idempotent based on the Idempotency-Key header.
@@ -14,6 +15,7 @@ import { ConflictError } from '../errors';
  * @param apiKeyId - ID of authenticated API key
  * @param idempotencyKey - Value of Idempotency-Key header
  * @param requestBody - Full request body to hash and compare
+ * @param logger - Optional logger for structured events
  * @returns Stored response body or null if none exists
  * @throws ConflictError if hash mismatch
  */
@@ -21,6 +23,7 @@ export async function checkIdempotency(
   apiKeyId: number,
   idempotencyKey: string | undefined,
   requestBody: Record<string, unknown>,
+  logger?: { info: (obj: object, msg: string) => void; warn: (obj: object, msg: string) => void }
 ): Promise<Record<string, unknown> | null> {
   if (!idempotencyKey) return null;
 
@@ -29,8 +32,14 @@ export async function checkIdempotency(
 
   if (record) {
     if (record.requestHash !== requestHash) {
+      if (logger) {
+        logger.warn({ api_key_id: apiKeyId, idempotency_key: idempotencyKey }, 'IDEMPOTENCY_CONFLICT');
+      }
+      await recordAbuseEvent('IDEMPOTENCY_CONFLICT', apiKeyId, undefined, { idempotency_key: idempotencyKey });
       throw new ConflictError('IDENTITY_KEY_REUSE_WITH_DIFFERENT_PAYLOAD');
     }
+
+    await recordAbuseEvent('IDEMPOTENCY_REUSE', apiKeyId, undefined, { idempotency_key: idempotencyKey });
     return record.responseBody;
   }
 

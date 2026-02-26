@@ -20,6 +20,14 @@ export type MetricsResponse = {
   title_rename_count: number;
   cooldown_hit_count: number;
   cooldown_integrity_warning_count: number;
+  idempotency_reuse_count: number;
+  idempotency_conflict_count: number;
+  cross_key_idempotency_collision_count: number;
+  job_poll_count: number;
+  high_frequency_polling_count: number;
+  client_error_count: number;
+  high_error_rate_count: number;
+  invalid_internal_token_attempt_count: number;
   failure_breakdown: {
     TIMEOUT: number;
     DNS_FAILURE: number;
@@ -79,8 +87,20 @@ export async function getInternalMetrics(): Promise<MetricsResponse> {
             COUNT(*) as cooldown_hit_count,
             COUNT(*) FILTER (WHERE integrity_warning = true) as cooldown_integrity_warning_count
         FROM cooldown_hits
+    ),
+    abuse_stats AS (
+        SELECT
+            COUNT(*) FILTER (WHERE event_type = 'IDEMPOTENCY_REUSE') as idempotency_reuse_count,
+            COUNT(*) FILTER (WHERE event_type = 'IDEMPOTENCY_CONFLICT') as idempotency_conflict_count,
+            COUNT(*) FILTER (WHERE event_type = 'CROSS_KEY_IDEMPOTENCY_COLLISION') as cross_key_idempotency_collision_count,
+            COUNT(*) FILTER (WHERE event_type = 'JOB_POLLING') as job_poll_count,
+            COUNT(*) FILTER (WHERE event_type = 'HIGH_FREQUENCY_JOB_POLLING') as high_frequency_polling_count,
+            COUNT(*) FILTER (WHERE event_type = 'CLIENT_ERROR') as client_error_count,
+            COUNT(*) FILTER (WHERE event_type = 'HIGH_ERROR_RATE_DETECTED') as high_error_rate_count,
+            COUNT(*) FILTER (WHERE event_type = 'INVALID_INTERNAL_TOKEN_ATTEMPT') as invalid_internal_token_attempt_count
+        FROM request_abuse_events
     )
-    SELECT * FROM job_stats CROSS JOIN cooldown_stats
+    SELECT * FROM job_stats CROSS JOIN cooldown_stats CROSS JOIN abuse_stats
   `);
 
   const breakdownResult = await DB.query<{ error_type: string; count: string }>(`
@@ -126,6 +146,14 @@ export async function getInternalMetrics(): Promise<MetricsResponse> {
     title_rename_count: parseInt(summary.title_rename_count || '0', 10),
     cooldown_hit_count: parseInt(summary.cooldown_hit_count, 10),
     cooldown_integrity_warning_count: parseInt(summary.cooldown_integrity_warning_count, 10),
+    idempotency_reuse_count: parseInt(summary.idempotency_reuse_count || '0', 10),
+    idempotency_conflict_count: parseInt(summary.idempotency_conflict_count || '0', 10),
+    cross_key_idempotency_collision_count: parseInt(summary.cross_key_idempotency_collision_count || '0', 10),
+    job_poll_count: parseInt(summary.job_poll_count || '0', 10),
+    high_frequency_polling_count: parseInt(summary.high_frequency_polling_count || '0', 10),
+    client_error_count: parseInt(summary.client_error_count || '0', 10),
+    high_error_rate_count: parseInt(summary.high_error_rate_count || '0', 10),
+    invalid_internal_token_attempt_count: parseInt(summary.invalid_internal_token_attempt_count || '0', 10),
     failure_breakdown: failure_breakdown as MetricsResponse['failure_breakdown'],
     in_memory_processing_jobs: inMemoryProcessingJobs,
     db_processing_jobs: dbProcessingJobs,

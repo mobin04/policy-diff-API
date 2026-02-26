@@ -1,6 +1,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { createMonitorJob, canAcceptNewJob, getJob } from '../services/monitorJob.service';
 import { checkIdempotency } from '../services/idempotency.service';
+import { recordAbuseEvent, trackJobPolling } from '../services/requestAbuse.service';
 import { generateHash } from '../utils/hash';
 import {
   MonitorRequestBody,
@@ -59,6 +60,7 @@ export async function createMonitorJobController(
       request.apiKey.id,
       idempotencyKey,
       request.body as Record<string, unknown>,
+      request.log
     );
 
     if (cachedResponse) {
@@ -128,6 +130,16 @@ export async function getJobStatusController(
   }
 
   const job = await getJob(jobId);
+
+  // STEP 3: Job Polling Instrumentation
+  await recordAbuseEvent('JOB_POLLING', request.apiKey?.id, request.ip, { job_id: jobId });
+  if (request.apiKey) {
+    const highFrequency = trackJobPolling(request.apiKey.id, jobId);
+    if (highFrequency) {
+      request.log.warn({ api_key_id: request.apiKey.id, job_id: jobId }, 'HIGH_FREQUENCY_JOB_POLLING');
+      await recordAbuseEvent('HIGH_FREQUENCY_JOB_POLLING', request.apiKey.id, request.ip, { job_id: jobId });
+    }
+  }
 
   if (!job) {
     reply.code(404).send({
