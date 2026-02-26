@@ -14,6 +14,10 @@ export type MetricsResponse = {
   isolation_fallback_count: number;
   isolation_drift_count: number;
   numeric_override_trigger_count: number;
+  fuzzy_match_count: number;
+  low_confidence_fuzzy_match_count: number;
+  fuzzy_collision_count: number;
+  title_rename_count: number;
   failure_breakdown: {
     TIMEOUT: number;
     DNS_FAILURE: number;
@@ -41,6 +45,10 @@ export async function getInternalMetrics(): Promise<MetricsResponse> {
     isolation_fallback_count: string;
     isolation_drift_count: string;
     numeric_override_trigger_count: string;
+    fuzzy_match_count: string;
+    low_confidence_fuzzy_match_count: string;
+    fuzzy_collision_count: string;
+    title_rename_count: string;
   }>(`
     SELECT 
         COUNT(*) as total_jobs,
@@ -54,7 +62,11 @@ export async function getInternalMetrics(): Promise<MetricsResponse> {
         COUNT(*) FILTER (WHERE result->>'content_isolation' = 'success') as isolation_success_count,
         COUNT(*) FILTER (WHERE result->>'content_isolation' = 'fallback') as isolation_fallback_count,
         COUNT(*) FILTER (WHERE (result->>'isolation_drift')::boolean = true) as isolation_drift_count,
-        COUNT(*) FILTER (WHERE (result->>'numeric_override_triggered')::boolean = true) as numeric_override_trigger_count
+        COUNT(*) FILTER (WHERE (result->>'numeric_override_triggered')::boolean = true) as numeric_override_trigger_count,
+        SUM((result->>'fuzzy_match_count')::int) as fuzzy_match_count,
+        SUM((result->>'low_confidence_fuzzy_match_count')::int) as low_confidence_fuzzy_match_count,
+        SUM((result->>'fuzzy_collision_count')::int) as fuzzy_collision_count,
+        SUM((result->>'title_rename_count')::int) as title_rename_count
     FROM monitor_jobs
   `);
 
@@ -95,6 +107,10 @@ export async function getInternalMetrics(): Promise<MetricsResponse> {
     isolation_fallback_count: parseInt(summary.isolation_fallback_count, 10),
     isolation_drift_count: parseInt(summary.isolation_drift_count, 10),
     numeric_override_trigger_count: parseInt(summary.numeric_override_trigger_count, 10),
+    fuzzy_match_count: parseInt(summary.fuzzy_match_count || '0', 10),
+    low_confidence_fuzzy_match_count: parseInt(summary.low_confidence_fuzzy_match_count || '0', 10),
+    fuzzy_collision_count: parseInt(summary.fuzzy_collision_count || '0', 10),
+    title_rename_count: parseInt(summary.title_rename_count || '0', 10),
     failure_breakdown: failure_breakdown as MetricsResponse['failure_breakdown'],
     in_memory_processing_jobs: inMemoryProcessingJobs,
     db_processing_jobs: dbProcessingJobs,

@@ -190,4 +190,28 @@ describe('Structural Diff Engine Tests', () => {
     const changesID = diffSections(osID, nsID);
     expect(changesID).toHaveLength(0);
   });
+
+  // 11. Section Matching Instrumentation
+  test('should populate matching metrics in result metadata', () => {
+    const oldSections: Section[] = [
+      { title: 'Privacy Policy', content: 'Content 1', hash: 'h1' },
+      { title: 'Terms of Use', content: 'Content 2', hash: 'h2' },
+      { title: 'Cookie Policy', content: 'Content 3', hash: 'h3' },
+    ];
+    const newSections: Section[] = [
+      { title: 'Privacy Policy Updated', content: 'Content 1 modified...', hash: 'h1-mod' }, // Fuzzy match (high confidence)
+      { title: 'Trms of Use', content: 'Content 2 modified...', hash: 'h2-mod' }, // Fuzzy match (low confidence: 0.83 similarity roughly, wait 0.85 threshold)
+      // 'Terms of Use' (12) vs 'Trms of Use' (11) -> distance 1. 1 - 1/12 = 0.91 (high confidence)
+      // Let's use lower confidence:
+      { title: 'Cookie Pol', content: 'Content 3', hash: 'h3' }, // Rename detection
+    ];
+
+    const context = { url: 'test-url' };
+    const changes = diffSections(oldSections, newSections, context) as any;
+
+    expect(changes.fuzzy_match_count).toBeGreaterThan(0);
+    expect(changes.title_rename_count).toBe(1);
+    expect(changes.low_confidence_fuzzy_match_count).toBeDefined();
+    expect(changes.fuzzy_collision_count).toBeDefined();
+  });
 });

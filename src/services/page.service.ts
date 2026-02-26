@@ -131,6 +131,10 @@ export async function checkPage(rawUrl: string, options: CheckPageOptions = {}):
       content_isolation: isolationStatus,
       isolation_drift: driftDetected,
       numeric_override_triggered: saveResult.numericOverrideTriggered,
+      fuzzy_match_count: saveResult.fuzzyMatchCount,
+      low_confidence_fuzzy_match_count: saveResult.lowConfidenceFuzzyMatchCount,
+      fuzzy_collision_count: saveResult.fuzzyCollisionCount,
+      title_rename_count: saveResult.titleRenameCount,
     };
   } else {
     const changes = saveResult.changes || [];
@@ -143,6 +147,10 @@ export async function checkPage(rawUrl: string, options: CheckPageOptions = {}):
       content_isolation: isolationStatus,
       isolation_drift: driftDetected,
       numeric_override_triggered: saveResult.numericOverrideTriggered,
+      fuzzy_match_count: saveResult.fuzzyMatchCount,
+      low_confidence_fuzzy_match_count: saveResult.lowConfidenceFuzzyMatchCount,
+      fuzzy_collision_count: saveResult.fuzzyCollisionCount,
+      title_rename_count: saveResult.titleRenameCount,
     };
   }
 

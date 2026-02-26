@@ -47,6 +47,11 @@ export type DiffResult = {
   isolation_drift?: boolean;
   /** True if numeric override hardening was triggered */
   numeric_override_triggered?: boolean;
+  /** Internal matching metrics */
+  fuzzy_match_count?: number;
+  low_confidence_fuzzy_match_count?: number;
+  fuzzy_collision_count?: number;
+  title_rename_count?: number;
 };
 
 /**

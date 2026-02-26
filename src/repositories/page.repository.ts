@@ -11,6 +11,10 @@ export type SavePageResult = {
   pageId: number;
   changes?: Change[];
   numericOverrideTriggered?: boolean;
+  fuzzyMatchCount?: number;
+  lowConfidenceFuzzyMatchCount?: number;
+  fuzzyCollisionCount?: number;
+  titleRenameCount?: number;
 };
 
 /**
@@ -171,12 +175,21 @@ export async function savePage(
 
     // Calculate diff between old and new sections
     const changes = diffSections(latestSections, sections, { url });
-    const numericOverrideTriggered = (changes as any).numeric_override_triggered === true;
+    const metadata = changes as any;
+    const numericOverrideTriggered = metadata.numeric_override_triggered === true;
 
     // OPTIMIZATION: If no meaningful changes detected, treat as unchanged
     // This handles cases where hash differs but content is semantically same
     if (changes.length === 0) {
-      return { status: 'unchanged', pageId, numericOverrideTriggered };
+      return {
+        status: 'unchanged',
+        pageId,
+        numericOverrideTriggered,
+        fuzzyMatchCount: metadata.fuzzy_match_count,
+        lowConfidenceFuzzyMatchCount: metadata.low_confidence_fuzzy_match_count,
+        fuzzyCollisionCount: metadata.fuzzy_collision_count,
+        titleRenameCount: metadata.title_rename_count,
+      };
     }
 
     await DB.query('INSERT INTO page_versions (page_id, content, content_hash, sections) VALUES ($1, $2, $3, $4)', [
@@ -186,7 +199,16 @@ export async function savePage(
       JSON.stringify(sections),
     ]);
 
-    return { status: 'changed', pageId, changes, numericOverrideTriggered };
+    return {
+      status: 'changed',
+      pageId,
+      changes,
+      numericOverrideTriggered,
+      fuzzyMatchCount: metadata.fuzzy_match_count,
+      lowConfidenceFuzzyMatchCount: metadata.low_confidence_fuzzy_match_count,
+      fuzzyCollisionCount: metadata.fuzzy_collision_count,
+      titleRenameCount: metadata.title_rename_count,
+    };
   }
 
   // First version - only when NO versions exist for this page_id

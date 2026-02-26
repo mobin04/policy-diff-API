@@ -702,6 +702,20 @@ To reduce formatting-based false positives:
 
 Numeric override triggers are logged and exposed via internal metrics.
 
+### Section Matching Instrumentation
+
+PolicyDiff instruments section matching behavior to ensure
+stable rename detection and prevent ambiguous fuzzy matches.
+
+The system logs:
+
+- Low-confidence fuzzy matches (0.85–0.89)
+- Multi-candidate fuzzy collisions
+- Deterministic title rename detection events
+
+These do not alter diff results.
+They provide observability into structural stability.
+
 
 ## 13. Local Development Setup
 
