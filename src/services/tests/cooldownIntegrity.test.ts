@@ -9,7 +9,7 @@ jest.mock('../../repositories/page.repository');
 jest.mock('../../repositories/cooldown.repository');
 jest.mock('../../utils/fetchPage');
 jest.mock('../../utils/canonicalizeUrl', () => ({
-  canonicalizeUrl: jest.fn((inputUrl: string) => inputUrl),
+  canonicalizeUrl: (inputUrl: string) => inputUrl,
 }));
 
 describe('Cooldown Integrity Instrumentation', () => {
@@ -52,14 +52,14 @@ describe('Cooldown Integrity Instrumentation', () => {
         canonical_url: mockUrl,
         cooldown_window_ms: 600000,
       }),
-      'COOLDOWN_CACHE_HIT'
+      'COOLDOWN_CACHE_HIT',
     );
 
     // Verify metrics recording
     expect(cooldownRepository.recordCooldownHit).toHaveBeenCalledWith(
       mockPageId,
       false, // integrityWarning
-      false  // isolationDriftDetected
+      false, // isolationDriftDetected
     );
   });
 
@@ -83,15 +83,12 @@ describe('Cooldown Integrity Instrumentation', () => {
 
     await checkPage(mockUrl, { minInterval: 10, logger: mockLogger });
 
-    expect(mockLogger.warn).toHaveBeenCalledWith(
-      { canonicalUrl: mockUrl },
-      'COOLDOWN_CACHE_INTEGRITY_WARNING'
-    );
+    expect(mockLogger.warn).toHaveBeenCalledWith({ canonical_url: mockUrl }, 'COOLDOWN_CACHE_INTEGRITY_WARNING');
 
     expect(cooldownRepository.recordCooldownHit).toHaveBeenCalledWith(
       mockPageId,
       true, // integrityWarning: true
-      false
+      false,
     );
   });
 
@@ -120,15 +117,12 @@ describe('Cooldown Integrity Instrumentation', () => {
 
     await checkPage(mockUrl, { minInterval: 10, logger: mockLogger });
 
-    expect(mockLogger.warn).toHaveBeenCalledWith(
-      { canonicalUrl: mockUrl },
-      'COOLDOWN_AFTER_ISOLATION_DRIFT'
-    );
+    expect(mockLogger.warn).toHaveBeenCalledWith({ canonical_url: mockUrl }, 'COOLDOWN_AFTER_ISOLATION_DRIFT');
 
     expect(cooldownRepository.recordCooldownHit).toHaveBeenCalledWith(
       mockPageId,
       false,
-      true // isolationDriftDetected: true
+      true, // isolationDriftDetected: true
     );
   });
 
@@ -152,25 +146,27 @@ describe('Cooldown Integrity Instrumentation', () => {
 
     await checkPage(mockUrl, { minInterval: 10, logger: mockLogger });
 
-    expect(mockLogger.warn).toHaveBeenCalledWith(expect.anything(), 'COOLDOWN_CACHE_INTEGRITY_WARNING');
-    expect(mockLogger.warn).toHaveBeenCalledWith(expect.anything(), 'COOLDOWN_AFTER_ISOLATION_DRIFT');
-
-    expect(cooldownRepository.recordCooldownHit).toHaveBeenCalledWith(
-      mockPageId,
-      true,
-      true
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ canonical_url: mockUrl }),
+      'COOLDOWN_CACHE_INTEGRITY_WARNING',
     );
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ canonical_url: mockUrl }),
+      'COOLDOWN_AFTER_ISOLATION_DRIFT',
+    );
+
+    expect(cooldownRepository.recordCooldownHit).toHaveBeenCalledWith(mockPageId, true, true);
   });
 
   test('should NOT record cooldown hit when not in cooldown', async () => {
     (pageRepository.getPageInfo as jest.Mock).mockResolvedValue({ id: mockPageId });
     (pageRepository.checkCooldown as jest.Mock).mockResolvedValue({ inCooldown: false });
     (fetchPageUtil.fetchPage as jest.Mock).mockResolvedValue('<html></html>');
-    
+
     // We need to mock the rest of the pipeline to avoid failures in checkPage
     jest.mock('../normalizer.service', () => ({
-      normalizeHtml: jest.fn(h => h),
-      normalizeContent: jest.fn(h => h),
+      normalizeHtml: jest.fn((h) => h),
+      normalizeContent: jest.fn((h) => h),
     }));
     jest.mock('../../utils/mainContentExtractor', () => ({
       extractMainContent: jest.fn(() => ({ content: '', fingerprint: 'fp', usedFallback: false })),
