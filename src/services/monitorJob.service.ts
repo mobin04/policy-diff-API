@@ -25,7 +25,7 @@ import {
   getActiveJobCountForKey,
 } from '../repositories/monitorJob.repository';
 import { saveIdempotencyRecord } from '../repositories/idempotency.repository';
-import { MonitorJob, JobErrorType, DiffResult, Section } from '../types';
+import { MonitorJob, JobErrorType, DiffResult, Section, Change } from '../types'; // Added Change
 import {
   InvalidUrlError,
   FetchError,
@@ -474,11 +474,10 @@ async function executeMonitoringPipeline(
   }
 
   // Update page cache and fingerprint
-  await DB.query('UPDATE pages SET last_checked_at = NOW(), last_result = $2, isolation_fingerprint = $3 WHERE id = $1', [
-    pageId,
-    JSON.stringify(diffResult),
-    isolationResult.fingerprint,
-  ]);
+  await DB.query(
+    'UPDATE pages SET last_checked_at = NOW(), last_result = $2, isolation_fingerprint = $3 WHERE id = $1',
+    [pageId, JSON.stringify(diffResult), isolationResult.fingerprint], // Corrected arguments
+  );
 
   return diffResult;
 }
