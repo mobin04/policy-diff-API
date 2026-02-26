@@ -80,7 +80,7 @@ export async function getInternalMetrics(): Promise<MetricsResponse> {
             COUNT(*) FILTER (WHERE integrity_warning = true) as cooldown_integrity_warning_count
         FROM cooldown_hits
     )
-    SELECT * FROM job_stats, cooldown_stats
+    SELECT * FROM job_stats CROSS JOIN cooldown_stats
   `);
 
   const breakdownResult = await DB.query<{ error_type: string; count: string }>(`
