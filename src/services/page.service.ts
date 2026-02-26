@@ -1,5 +1,6 @@
 import { fetchPage } from '../utils/fetchPage';
 import { savePage, getPageInfo, checkCooldown, updatePageCache } from '../repositories/page.repository';
+import { recordCooldownHit } from '../repositories/cooldown.repository';
 import { normalizeContent, normalizeHtml } from './normalizer.service';
 import { extractSections } from './sectionExtractor.service';
 import { extractMainContent } from '../utils/mainContentExtractor';
@@ -49,7 +50,7 @@ export async function checkPage(rawUrl: string, options: CheckPageOptions = {}):
   const canonicalUrl = canonicalizeUrl(rawUrl);
 
   if (logger) {
-    logger.debug({ rawUrl, canonicalUrl, minInterval }, 'URL canonicalized');
+    logger.debug({ rawUrl, canonical_url: canonicalUrl, minInterval }, 'URL canonicalized');
   }
 
   const pageInfo = await getPageInfo(canonicalUrl);
@@ -60,11 +61,30 @@ export async function checkPage(rawUrl: string, options: CheckPageOptions = {}):
 
     if (cooldownStatus.inCooldown) {
       if (logger) {
-        logger.debug(
-          { canonicalUrl, lastCheckedAt: cooldownStatus.lastCheckedAt },
-          'Cooldown active, returning cached result',
+        logger.info(
+          {
+            canonical_url: canonicalUrl,
+            last_checked_at: cooldownStatus.lastCheckedAt?.toISOString(),
+            cooldown_window_ms: minInterval * 60 * 1000,
+          },
+          'COOLDOWN_CACHE_HIT',
         );
       }
+
+      // Validation: Ensure isolation_fingerprint exists and last_result is not null
+      const hasIntegrity = pageInfo.isolationFingerprint !== null && cooldownStatus.lastResult !== null;
+      if (!hasIntegrity && logger) {
+        logger.warn({ canonical_url: canonicalUrl }, 'COOLDOWN_CACHE_INTEGRITY_WARNING');
+      }
+
+      // Drift Surface: If previous isolation_drift_detected was true
+      const previousDrift = cooldownStatus.lastResult?.isolation_drift === true;
+      if (previousDrift && logger) {
+        logger.warn({ canonical_url: canonicalUrl }, 'COOLDOWN_AFTER_ISOLATION_DRIFT');
+      }
+
+      // Record hit for metrics
+      await recordCooldownHit(pageInfo.id, !hasIntegrity, previousDrift);
 
       // Return cached result if available, otherwise generic skip response
       return {
@@ -111,7 +131,7 @@ export async function checkPage(rawUrl: string, options: CheckPageOptions = {}):
 
   if (logger) {
     logger.debug(
-      { canonicalUrl, pageId: saveResult.pageId, status: saveResult.status, isolationStatus },
+      { canonical_url: canonicalUrl, pageId: saveResult.pageId, status: saveResult.status, isolationStatus },
       'Page processed',
     );
   }
