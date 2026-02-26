@@ -200,8 +200,8 @@ describe('Structural Diff Engine Tests', () => {
     ];
 
     const newSections: Section[] = [
-      { title: 'Privacy Policy Update', content: 'Content 1 modified...', hash: 'h1-mod' }, // Fuzzy
-      { title: 'Terms of Servic', content: 'Content 2 modified...', hash: 'h2-mod' }, // Fuzzy
+      { title: 'Privacy Polic', content: 'Content 1 modified...', hash: 'h1-mod' }, // Fuzzy (High Confidence)
+      { title: 'Terms of Servic', content: 'Content 2 modified...', hash: 'h2-mod' }, // Fuzzy (High Confidence)
       { title: 'Cookie Rules', content: 'Content 3', hash: 'h3' }, // Rename
     ];
 
