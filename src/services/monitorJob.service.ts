@@ -25,7 +25,7 @@ import {
   getActiveJobCountForKey,
 } from '../repositories/monitorJob.repository';
 import { saveIdempotencyRecord } from '../repositories/idempotency.repository';
-import { MonitorJob, JobErrorType, DiffResult, Section } from '../types';
+import { MonitorJob, JobErrorType, DiffResult, Section, Change } from '../types'; // Added Change
 import {
   InvalidUrlError,
   FetchError,
@@ -412,14 +412,24 @@ async function executeMonitoringPipeline(
     } else {
       // Calculate diff
       const changes = diffSections(latestSections, sections, { url, logger });
-      const numericOverrideTriggered = (changes as any).numeric_override_triggered === true;
+      const metadata = changes as Change[] & {
+        numeric_override_triggered?: boolean;
+        fuzzy_match_count?: number;
+        low_confidence_fuzzy_match_count?: number;
+        fuzzy_collision_count?: number;
+        title_rename_count?: number;
+      };
 
       if (changes.length === 0) {
         diffResult = {
           message: 'No meaningful change detected',
           content_isolation: isolationStatus,
           isolation_drift: driftDetected,
-          numeric_override_triggered: numericOverrideTriggered,
+          numeric_override_triggered: metadata.numeric_override_triggered,
+          fuzzy_match_count: metadata.fuzzy_match_count,
+          low_confidence_fuzzy_match_count: metadata.low_confidence_fuzzy_match_count,
+          fuzzy_collision_count: metadata.fuzzy_collision_count,
+          title_rename_count: metadata.title_rename_count,
         };
       } else {
         // Analyze risk
@@ -431,7 +441,11 @@ async function executeMonitoringPipeline(
           changes: riskAnalysis.changes,
           content_isolation: isolationStatus,
           isolation_drift: driftDetected,
-          numeric_override_triggered: numericOverrideTriggered,
+          numeric_override_triggered: metadata.numeric_override_triggered,
+          fuzzy_match_count: metadata.fuzzy_match_count,
+          low_confidence_fuzzy_match_count: metadata.low_confidence_fuzzy_match_count,
+          fuzzy_collision_count: metadata.fuzzy_collision_count,
+          title_rename_count: metadata.title_rename_count,
         };
 
         // Store new version
@@ -460,11 +474,10 @@ async function executeMonitoringPipeline(
   }
 
   // Update page cache and fingerprint
-  await DB.query('UPDATE pages SET last_checked_at = NOW(), last_result = $2, isolation_fingerprint = $3 WHERE id = $1', [
-    pageId,
-    JSON.stringify(diffResult),
-    isolationResult.fingerprint,
-  ]);
+  await DB.query(
+    'UPDATE pages SET last_checked_at = NOW(), last_result = $2, isolation_fingerprint = $3 WHERE id = $1',
+    [pageId, JSON.stringify(diffResult), isolationResult.fingerprint], // Corrected arguments
+  );
 
   return diffResult;
 }

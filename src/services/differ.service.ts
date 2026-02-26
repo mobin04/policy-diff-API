@@ -155,6 +155,17 @@ function getMeaningfulChange(
 }
 
 /**
+ * Metadata tracked during the diffing process for observability.
+ */
+type DiffSectionsMetadata = {
+  numeric_override_triggered?: boolean;
+  fuzzy_match_count?: number;
+  low_confidence_fuzzy_match_count?: number;
+  fuzzy_collision_count?: number;
+  title_rename_count?: number;
+};
+
+/**
  * Compare old and new sections to detect changes
  *
  * Uses section hashes for fast comparison, then applies
@@ -169,7 +180,7 @@ function getMeaningfulChange(
  * @param oldSections - Sections from previous version
  * @param newSections - Sections from current version
  * @param context - Optional context including url and logger for telemetry
- * @returns Array of meaningful changes
+ * @returns Array of meaningful changes with instrumentation metadata
  */
 export function diffSections(
   oldSections: Section[],
@@ -177,6 +188,12 @@ export function diffSections(
   context?: { url: string; logger?: Logger },
 ): Change[] {
   const changes: Change[] = [];
+  const metadata: DiffSectionsMetadata = {
+    fuzzy_match_count: 0,
+    low_confidence_fuzzy_match_count: 0,
+    fuzzy_collision_count: 0,
+    title_rename_count: 0,
+  };
   let anyNumericOverride = false;
 
   // Tracks which old sections are still available for matching
@@ -227,17 +244,53 @@ export function diffSections(
   for (const newSection of pendingNewSections) {
     let bestMatchTitle: string | null = null;
     let bestScore = 0;
+    const candidates: { title: string; score: number }[] = [];
 
-    // Find best match among remaining old sections
+    // Find all matches exceeding threshold
     for (const [oldTitle] of unmatchedOldSections) {
       const score = calculateTitleSimilarity(newSection.title, oldTitle);
-      if (score > bestScore) {
-        bestScore = score;
-        bestMatchTitle = oldTitle;
+      if (score >= TITLE_SIMILARITY_THRESHOLD) {
+        candidates.push({ title: oldTitle, score });
+        if (score > bestScore) {
+          bestScore = score;
+          bestMatchTitle = oldTitle;
+        }
       }
     }
 
-    if (bestMatchTitle && bestScore >= TITLE_SIMILARITY_THRESHOLD) {
+    if (bestMatchTitle) {
+      metadata.fuzzy_match_count!++;
+
+      // STEP 1: Instrument Fuzzy Match Score (low confidence logging)
+      if (bestScore >= 0.85 && bestScore < 0.9) {
+        metadata.low_confidence_fuzzy_match_count!++;
+        if (context?.logger) {
+          context.logger.info(
+            {
+              old_title: bestMatchTitle,
+              new_title: newSection.title,
+              similarity_score: bestScore,
+            },
+            'LOW_CONFIDENCE_FUZZY_MATCH',
+          );
+        }
+      }
+
+      // STEP 2: Detect Multiple Candidates (collision detection)
+      if (candidates.length > 1) {
+        metadata.fuzzy_collision_count!++;
+        if (context?.logger) {
+          context.logger.info(
+            {
+              new_title: newSection.title,
+              candidate_titles: candidates.map((c) => c.title),
+              candidate_scores: candidates.map((c) => c.score),
+            },
+            'FUZZY_MATCH_COLLISION_DETECTED',
+          );
+        }
+      }
+
       const oldSection = unmatchedOldSections.get(bestMatchTitle)!;
       unmatchedOldSections.delete(bestMatchTitle);
 
@@ -288,6 +341,17 @@ export function diffSections(
     }
 
     if (matchedOldTitle) {
+      metadata.title_rename_count!++;
+      if (context?.logger) {
+        context.logger.info(
+          {
+            previous_title: matchedOldTitle,
+            new_title: newSection.title,
+          },
+          'SECTION_TITLE_RENAMED',
+        );
+      }
+
       unmatchedOldSections.delete(matchedOldTitle);
       changes.push({
         type: 'TITLE_RENAMED',
@@ -310,11 +374,13 @@ export function diffSections(
     changes.push({ section: oldTitle, type: 'DELETED' });
   }
 
-  // Use a type-safe intersection to return the numeric override metadata
-  const resultsWithMetadata = changes as Change[] & { numeric_override_triggered?: boolean };
-  if (anyNumericOverride) {
-    resultsWithMetadata.numeric_override_triggered = true;
-  }
+  // Use a type-safe intersection to return all metadata
+  const resultsWithMetadata = changes as Change[] & DiffSectionsMetadata;
+  resultsWithMetadata.numeric_override_triggered = anyNumericOverride;
+  resultsWithMetadata.fuzzy_match_count = metadata.fuzzy_match_count;
+  resultsWithMetadata.low_confidence_fuzzy_match_count = metadata.low_confidence_fuzzy_match_count;
+  resultsWithMetadata.fuzzy_collision_count = metadata.fuzzy_collision_count;
+  resultsWithMetadata.title_rename_count = metadata.title_rename_count;
 
   return resultsWithMetadata;
 }
