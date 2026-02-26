@@ -9,6 +9,9 @@ import {
   reconcileConcurrencyState,
 } from './services/concurrencyReconciliation.service';
 
+let reconciliationInterval: NodeJS.Timeout | null = null;
+let isShuttingDown = false;
+
 /**
  * Server Bootstrap and Lifecycle Management
  *
@@ -34,7 +37,7 @@ const start = async () => {
 
     // 4. Start concurrency reconciliation guard (every 10 seconds)
     initReconciliation(app.log);
-    setInterval(() => {
+    reconciliationInterval = setInterval(() => {
       reconcileConcurrencyState().catch((err: unknown) => {
         app.log.error({ err }, 'Concurrency reconciliation failure');
       });
@@ -53,7 +56,21 @@ const start = async () => {
  * Graceful Shutdown Implementation
  */
 const shutdown = async (signal: string) => {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+
   app.log.info({ signal }, 'Graceful shutdown initiated');
+
+  // Force exit after 15 seconds if graceful shutdown hangs
+  setTimeout(() => {
+    app.log.error('Graceful shutdown timed out, forcing exit');
+    process.exit(1);
+  }, 15000).unref();
+
+  if (reconciliationInterval) {
+    clearInterval(reconciliationInterval);
+    reconciliationInterval = null;
+  }
 
   // Stop accepting new requests
   try {

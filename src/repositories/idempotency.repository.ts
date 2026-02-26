@@ -1,4 +1,5 @@
 import { DB } from '../db';
+import { recordAbuseEvent } from '../services/requestAbuse.service';
 
 export type IdempotencyRecord = {
   id: string;
@@ -59,6 +60,18 @@ export async function saveIdempotencyRecord(
   client?: typeof DB | { query: typeof DB.query },
 ): Promise<void> {
   const db = client || DB;
+
+  // STEP 2: Cross-key collision detection
+  const collisionCheck = await db.query('SELECT api_key_id FROM idempotency_keys WHERE idempotency_key = $1 AND api_key_id != $2 LIMIT 1', [
+    idempotencyKey,
+    apiKeyId,
+  ]);
+
+  if (collisionCheck.rows.length > 0) {
+    // Log structured event but do not block (isolation is still enforced by api_key_id in PRIMARY KEY or unique constraint)
+    await recordAbuseEvent('CROSS_KEY_IDEMPOTENCY_COLLISION', apiKeyId, undefined, { idempotency_key: idempotencyKey });
+  }
+
   await db.query(
     `INSERT INTO idempotency_keys (api_key_id, idempotency_key, request_hash, response_body)
      VALUES ($1, $2, $3, $4)`,

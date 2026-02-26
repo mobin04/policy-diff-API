@@ -730,6 +730,20 @@ The system logs:
 Cooldown does not alter diff semantics.
 It only prevents redundant processing.
 
+### Request Abuse Instrumentation
+
+PolicyDiff instruments abnormal request behavior including:
+
+- Idempotency conflicts
+- Cross-key idempotency reuse
+- High-frequency job polling
+- Repeated client error bursts
+- Internal endpoint misuse attempts
+
+These signals are exposed via internal metrics.
+They do not alter API behavior.
+They provide operational visibility only.
+
 
 ## 13. Local Development Setup
 

@@ -12,6 +12,7 @@ import { requestLoggerPlugin } from './plugins/requestLogger';
 import { NODE_ENV, LOG_LEVEL } from './config';
 import { ErrorResponse } from './types';
 import { ApiError, isApiError } from './errors';
+import { recordAbuseEvent, trackErrorRate } from './services/requestAbuse.service';
 
 // Import types to ensure Fastify type extensions are loaded
 import './types/auth';
@@ -109,6 +110,20 @@ app.setErrorHandler((error: Error, request: FastifyRequest, reply: FastifyReply)
   }
 
   reply.code(statusCode).send(response);
+
+  // STEP 4: Failed Request Pattern Tracking
+  if (statusCode >= 400 && statusCode < 500) {
+    const apiKeyId = request.apiKey?.id;
+    recordAbuseEvent('CLIENT_ERROR', apiKeyId, request.ip, { statusCode, errorName }).catch(() => {});
+
+    if (apiKeyId) {
+      const highErrorRate = trackErrorRate(apiKeyId);
+      if (highErrorRate) {
+        request.log.warn({ api_key_id: apiKeyId }, 'HIGH_ERROR_RATE_DETECTED');
+        recordAbuseEvent('HIGH_ERROR_RATE_DETECTED', apiKeyId, request.ip).catch(() => {});
+      }
+    }
+  }
 });
 
 // ==========================================
