@@ -9,7 +9,7 @@ jest.mock('../../repositories/page.repository');
 jest.mock('../../repositories/cooldown.repository');
 jest.mock('../../utils/fetchPage');
 jest.mock('../../utils/canonicalizeUrl', () => ({
-  canonicalizeUrl: jest.fn((url) => url),
+  canonicalizeUrl: jest.fn((inputUrl: string) => inputUrl),
 }));
 
 describe('Cooldown Integrity Instrumentation', () => {
