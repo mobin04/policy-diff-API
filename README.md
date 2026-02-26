@@ -716,6 +716,20 @@ The system logs:
 These do not alter diff results.
 They provide observability into structural stability.
 
+### Snapshot Cooldown Integrity
+
+PolicyDiff instruments cooldown behavior to ensure cached results
+cannot silently mask structural instability.
+
+The system logs:
+
+- Cooldown cache hits
+- Missing fingerprint warnings
+- Cooldown usage after isolation drift
+
+Cooldown does not alter diff semantics.
+It only prevents redundant processing.
+
 
 ## 13. Local Development Setup
 

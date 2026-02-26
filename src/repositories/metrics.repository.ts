@@ -18,6 +18,8 @@ export type MetricsResponse = {
   low_confidence_fuzzy_match_count: number;
   fuzzy_collision_count: number;
   title_rename_count: number;
+  cooldown_hit_count: number;
+  cooldown_integrity_warning_count: number;
   failure_breakdown: {
     TIMEOUT: number;
     DNS_FAILURE: number;
@@ -49,25 +51,36 @@ export async function getInternalMetrics(): Promise<MetricsResponse> {
     low_confidence_fuzzy_match_count: string;
     fuzzy_collision_count: string;
     title_rename_count: string;
+    cooldown_hit_count: string;
+    cooldown_integrity_warning_count: string;
   }>(`
-    SELECT 
-        COUNT(*) as total_jobs,
-        COUNT(*) FILTER (WHERE status = 'COMPLETED') as completed_jobs,
-        COUNT(*) FILTER (WHERE status = 'FAILED') as failed_jobs,
-        COUNT(*) FILTER (WHERE status = 'PROCESSING') as processing_jobs,
-        AVG(EXTRACT(EPOCH FROM (completed_at - started_at)) * 1000) FILTER (WHERE status = 'COMPLETED' AND completed_at IS NOT NULL AND started_at IS NOT NULL) as average_processing_time_ms,
-        COUNT(*) FILTER (WHERE result->>'risk_level' = 'HIGH') as high_risk_count,
-        COUNT(*) FILTER (WHERE result->>'risk_level' = 'MEDIUM') as medium_risk_count,
-        COUNT(*) FILTER (WHERE result->>'risk_level' = 'LOW') as low_risk_count,
-        COUNT(*) FILTER (WHERE result->>'content_isolation' = 'success') as isolation_success_count,
-        COUNT(*) FILTER (WHERE result->>'content_isolation' = 'fallback') as isolation_fallback_count,
-        COUNT(*) FILTER (WHERE (result->>'isolation_drift')::boolean = true) as isolation_drift_count,
-        COUNT(*) FILTER (WHERE (result->>'numeric_override_triggered')::boolean = true) as numeric_override_trigger_count,
-        SUM((result->>'fuzzy_match_count')::int) as fuzzy_match_count,
-        SUM((result->>'low_confidence_fuzzy_match_count')::int) as low_confidence_fuzzy_match_count,
-        SUM((result->>'fuzzy_collision_count')::int) as fuzzy_collision_count,
-        SUM((result->>'title_rename_count')::int) as title_rename_count
-    FROM monitor_jobs
+    WITH job_stats AS (
+        SELECT 
+            COUNT(*) as total_jobs,
+            COUNT(*) FILTER (WHERE status = 'COMPLETED') as completed_jobs,
+            COUNT(*) FILTER (WHERE status = 'FAILED') as failed_jobs,
+            COUNT(*) FILTER (WHERE status = 'PROCESSING') as processing_jobs,
+            AVG(EXTRACT(EPOCH FROM (completed_at - started_at)) * 1000) FILTER (WHERE status = 'COMPLETED' AND completed_at IS NOT NULL AND started_at IS NOT NULL) as average_processing_time_ms,
+            COUNT(*) FILTER (WHERE result->>'risk_level' = 'HIGH') as high_risk_count,
+            COUNT(*) FILTER (WHERE result->>'risk_level' = 'MEDIUM') as medium_risk_count,
+            COUNT(*) FILTER (WHERE result->>'risk_level' = 'LOW') as low_risk_count,
+            COUNT(*) FILTER (WHERE result->>'content_isolation' = 'success') as isolation_success_count,
+            COUNT(*) FILTER (WHERE result->>'content_isolation' = 'fallback') as isolation_fallback_count,
+            COUNT(*) FILTER (WHERE (result->>'isolation_drift')::boolean = true) as isolation_drift_count,
+            COUNT(*) FILTER (WHERE (result->>'numeric_override_triggered')::boolean = true) as numeric_override_trigger_count,
+            SUM((result->>'fuzzy_match_count')::int) as fuzzy_match_count,
+            SUM((result->>'low_confidence_fuzzy_match_count')::int) as low_confidence_fuzzy_match_count,
+            SUM((result->>'fuzzy_collision_count')::int) as fuzzy_collision_count,
+            SUM((result->>'title_rename_count')::int) as title_rename_count
+        FROM monitor_jobs
+    ),
+    cooldown_stats AS (
+        SELECT 
+            COUNT(*) as cooldown_hit_count,
+            COUNT(*) FILTER (WHERE integrity_warning = true) as cooldown_integrity_warning_count
+        FROM cooldown_hits
+    )
+    SELECT * FROM job_stats, cooldown_stats
   `);
 
   const breakdownResult = await DB.query<{ error_type: string; count: string }>(`
@@ -111,6 +124,8 @@ export async function getInternalMetrics(): Promise<MetricsResponse> {
     low_confidence_fuzzy_match_count: parseInt(summary.low_confidence_fuzzy_match_count || '0', 10),
     fuzzy_collision_count: parseInt(summary.fuzzy_collision_count || '0', 10),
     title_rename_count: parseInt(summary.title_rename_count || '0', 10),
+    cooldown_hit_count: parseInt(summary.cooldown_hit_count, 10),
+    cooldown_integrity_warning_count: parseInt(summary.cooldown_integrity_warning_count, 10),
     failure_breakdown: failure_breakdown as MetricsResponse['failure_breakdown'],
     in_memory_processing_jobs: inMemoryProcessingJobs,
     db_processing_jobs: dbProcessingJobs,
