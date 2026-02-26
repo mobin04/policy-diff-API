@@ -77,7 +77,12 @@ export async function reconcileConcurrencyState(): Promise<void> {
     }
   } catch (err: unknown) {
     if (_logger) {
-      _logger.error({ err, event: 'concurrency_reconciliation_failure' }, 'Failed to reconcile concurrency state');
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes('end on the pool')) {
+        _logger.debug({ event: 'concurrency_reconciliation_skipped', reason: 'Database pool is closed' });
+      } else {
+        _logger.error({ err, event: 'concurrency_reconciliation_failure' }, 'Failed to reconcile concurrency state');
+      }
     }
   }
 }

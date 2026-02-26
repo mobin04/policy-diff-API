@@ -61,6 +61,14 @@ export async function getInternalMetrics(): Promise<MetricsResponse> {
     title_rename_count: string;
     cooldown_hit_count: string;
     cooldown_integrity_warning_count: string;
+    idempotency_reuse_count: string;
+    idempotency_conflict_count: string;
+    cross_key_idempotency_collision_count: string;
+    job_poll_count: string;
+    high_frequency_polling_count: string;
+    client_error_count: string;
+    high_error_rate_count: string;
+    invalid_internal_token_attempt_count: string;
   }>(`
     WITH job_stats AS (
         SELECT 
