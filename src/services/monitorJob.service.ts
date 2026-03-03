@@ -433,7 +433,7 @@ async function executeMonitoringPipeline(
         };
       } else {
         // Analyze risk
-        const riskAnalysis = analyzeRisk(changes, sections);
+        const riskAnalysis = analyzeRisk(changes, sections, latestSections);
 
         diffResult = {
           message: 'Changes detected',

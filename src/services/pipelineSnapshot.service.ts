@@ -43,7 +43,7 @@ export function processSnapshot(rawHtml: string): SnapshotPipelineResult {
     type: 'ADDED',
     section: s.title,
   }));
-  const riskResult = analyzeRisk(fullDocumentChanges, extractedSections);
+  const riskResult = analyzeRisk(fullDocumentChanges, extractedSections, []);
 
   // Ensure stable ordering by sorting sections alphabetically by title
   // This explicitly guarantees that section array drift does not occur due to DOM rearrangement

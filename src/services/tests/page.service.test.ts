@@ -81,7 +81,7 @@ describe('PageService', () => {
       expect(result.status).toBe('processed');
       expect(result.result?.message).toBe('Changes detected');
       expect(result.result?.risk_level).toBe('MEDIUM');
-      expect(analyzeRisk).toHaveBeenCalledWith(mockChanges, []);
+      expect(analyzeRisk).toHaveBeenCalledWith(mockChanges, [], undefined);
     });
   });
 
