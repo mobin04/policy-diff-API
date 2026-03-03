@@ -47,11 +47,23 @@ The system is built on a foundation of discrete, purposeful features:
 -   **Structural Diff Engine**: Identifies changes as `ADDED`, `DELETED`, or `MODIFIED` at the section level. Sections are matched using exact title match first. If an exact match fails, deterministic Levenshtein similarity matching is applied with a threshold of 0.85 to prevent minor title edits from being misclassified as `DELETED` + `ADDED`. Fuzzy title matches undergo full hash comparison and meaningful change validation before being classified as `MODIFIED`.
 -   **Stable Section Tracking**: Detects section renames by comparing exact content hashes when title matching fails.
 -   **Meaningful Change Threshold**: Ignores modifications below a certain threshold (e.g., minor punctuation changes) to reduce noise.
--   **Rule-Based Risk Engine**: Classifies changes using an expanded deterministic keyword coverage aligned with modern compliance frameworks (GDPR, CCPA, arbitration, indemnification, biometric data, jurisdiction clauses).
-    -   **HIGH risk** includes legal rights waivers, sensitive regulated data, and aggressive unilateral clauses.
-    -   **MEDIUM risk** includes advertising profiling, jurisdictional changes, and operational legal clauses.
-    -   **LOW risk removal** handles informational sections like introductions or contact information.
--   **Global Risk Aggregation**: Aggregates section-level risks into a single `LOW`, `MEDIUM`, or `HIGH` risk score for the entire document change.
+-   **Rule-Based Risk Engine (V2)**: Classifies changes using an expanded deterministic proximity clustering and root-matching engine.
+    -   **V2 Features**:
+        -   **Proximity Clustering**: Detects high-risk data transfer intents by scanning for verbs (e.g., "sell", "share") within a 5-word window of sensitive nouns (e.g., "data", "biometric"). Includes negation-awareness to prevent false positives.
+        -   **Negation Shift Detection**: Flags when negation words (e.g., "not", "never") are removed from sections containing high-risk data transfer clusters.
+        -   **Contextual Multipliers**: Adjusts risk levels based on section importance (e.g., 2.0x for "arbitration", 0.5x for "contact").
+        -   **Structural Erosion Detection**: Identifies and flags the removal of high-risk sections (e.g., arbitration clauses).
+        -   **Lightweight Stemming**: Uses root-based matching (e.g., "arbitrat", "indemn") for broader coverage without external dependencies.
+        -   **Super-Normalization**: Pre-processes content by stripping HTML, collapsing whitespace, and removing punctuation for stable scanning.
+    -   **Evaluation Order**: 
+        1. Negation Shift Detection (for MODIFIED sections).
+        2. Proximity Clustering (verbs + nouns).
+        3. HIGH keyword root matches.
+        4. MEDIUM keyword root matches.
+        5. Section Multiplier Adjustments.
+        6. Structural Erosion Detection (for DELETED sections).
+        7. Fallback to LOW.
+-   **Global Risk Aggregation**: Aggregates section-level risks into a single `LOW`, `MEDIUM`, or `HIGH` risk score for the entire document change. Highest section risk wins.
 -   **API Key Authentication**: Secures all endpoints with bearer token authentication.
 -   **Dev vs. Prod Keys**: Supports separate key environments (`pd_dev_...`, `pd_prod_...`) for safe development and testing.
 -   **SHA-256 Key Hashing**: Hashes all API keys before storage; raw keys are never stored.

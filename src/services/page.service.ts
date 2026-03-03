@@ -158,7 +158,7 @@ export async function checkPage(rawUrl: string, options: CheckPageOptions = {}):
     };
   } else {
     const changes = saveResult.changes || [];
-    const riskAnalysis = analyzeRisk(changes, sections);
+    const riskAnalysis = analyzeRisk(changes, sections, saveResult.oldSections);
 
     diffResult = {
       message: 'Changes detected',

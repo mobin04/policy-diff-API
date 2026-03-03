@@ -10,6 +10,7 @@ export type SavePageResult = {
   status: 'unchanged' | 'first_version' | 'changed';
   pageId: number;
   changes?: Change[];
+  oldSections?: Section[];
   numericOverrideTriggered?: boolean;
   fuzzyMatchCount?: number;
   lowConfidenceFuzzyMatchCount?: number;
@@ -209,6 +210,7 @@ export async function savePage(
       status: 'changed',
       pageId,
       changes,
+      oldSections: latestSections,
       numericOverrideTriggered,
       fuzzyMatchCount: metadata.fuzzy_match_count,
       lowConfidenceFuzzyMatchCount: metadata.low_confidence_fuzzy_match_count,
