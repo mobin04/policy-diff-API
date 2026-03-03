@@ -59,13 +59,17 @@ export async function getBatchJobCounts(batchId: string): Promise<BatchJobCounts
   return counts;
 }
 
-export type BatchJobListItem = { jobId: string; status: JobStatus };
+export type BatchJobListItem = { url: string; jobId: string; status: JobStatus };
 
 export async function listBatchJobs(batchId: string): Promise<BatchJobListItem[]> {
-  const result = await DB.query<{ id: string; status: JobStatus }>(
-    'SELECT id, status FROM monitor_jobs WHERE batch_id = $1 ORDER BY created_at ASC',
+  const result = await DB.query<{ url: string; id: string; status: JobStatus }>(
+    `SELECT p.url, j.id, j.status 
+     FROM monitor_jobs j
+     JOIN pages p ON j.page_id = p.id
+     WHERE j.batch_id = $1 
+     ORDER BY j.created_at ASC`,
     [batchId],
   );
 
-  return result.rows.map((r) => ({ jobId: r.id, status: r.status }));
+  return result.rows.map((r) => ({ url: r.url, jobId: r.id, status: r.status }));
 }

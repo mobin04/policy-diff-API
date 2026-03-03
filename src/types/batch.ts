@@ -43,6 +43,7 @@ export type MonitorBatchCreatedResponse = {
 };
 
 export type BatchJobStatusItem = {
+  url: string;
   job_id: string;
   status: JobStatus;
 };

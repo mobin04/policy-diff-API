@@ -10,7 +10,9 @@
     "test": "jest",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "migrate": "npx ts-node scripts/migrate.ts",
+    "backup:db": "npx ts-node scripts/backup-db.ts"
   },
   "author": "Mobin Mathew",
   "license": "ISC",
@@ -42,6 +44,8 @@
     "fast-levenshtein": "^3.0.0",
     "fastify": "^5.7.4",
     "fastify-plugin": "^5.1.0",
-    "pg": "^8.18.0"
+    "pg": "^8.18.0",
+    "pino-roll": "^1.1.0",
+    "node-cron": "^3.0.3"
   }
 }
