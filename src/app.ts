@@ -30,10 +30,16 @@ const isProduction = NODE_ENV === 'production';
 const app = Fastify({
   logger: {
     level: LOG_LEVEL,
-    // In production, output JSON for log aggregators
-    // In development, use pino-pretty if available
     transport: isProduction
-      ? undefined
+      ? {
+          target: 'pino-roll',
+          options: {
+            file: './logs/app.log',
+            size: '10m', // Rotate every 10MB
+            interval: '1d', // Or every day
+            mkdir: true,
+          },
+        }
       : {
           target: 'pino-pretty',
           options: {

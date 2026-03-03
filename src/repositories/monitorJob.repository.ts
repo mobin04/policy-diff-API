@@ -8,6 +8,7 @@ function rowToEntity(row: MonitorJobRow): MonitorJob {
   return {
     id: row.id,
     pageId: row.page_id,
+    url: row.url,
     apiKeyId: row.api_key_id ?? null,
     batchId: row.batch_id,
     status: row.status,
@@ -52,7 +53,13 @@ export async function createJob(
  * @returns Job entity or null if not found
  */
 export async function getJobById(jobId: string): Promise<MonitorJob | null> {
-  const result = await DB.query<MonitorJobRow>('SELECT * FROM monitor_jobs WHERE id = $1', [jobId]);
+  const result = await DB.query<MonitorJobRow>(
+    `SELECT j.*, p.url 
+     FROM monitor_jobs j
+     JOIN pages p ON j.page_id = p.id
+     WHERE j.id = $1`,
+    [jobId]
+  );
 
   if (result.rows.length === 0) {
     return null;
@@ -69,10 +76,11 @@ export async function getJobById(jobId: string): Promise<MonitorJob | null> {
  */
 export async function markJobProcessing(jobId: string): Promise<MonitorJob | null> {
   const result = await DB.query<MonitorJobRow>(
-    `UPDATE monitor_jobs
+    `UPDATE monitor_jobs j
      SET status = 'PROCESSING', started_at = NOW()
-     WHERE id = $1
-     RETURNING *`,
+     FROM pages p
+     WHERE j.page_id = p.id AND j.id = $1
+     RETURNING j.*, p.url`,
     [jobId],
   );
 
@@ -92,10 +100,11 @@ export async function markJobProcessing(jobId: string): Promise<MonitorJob | nul
  */
 export async function markJobCompleted(jobId: string, result: DiffResult): Promise<MonitorJob | null> {
   const queryResult = await DB.query<MonitorJobRow>(
-    `UPDATE monitor_jobs
+    `UPDATE monitor_jobs j
      SET status = 'COMPLETED', result = $2, completed_at = NOW()
-     WHERE id = $1
-     RETURNING *`,
+     FROM pages p
+     WHERE j.page_id = p.id AND j.id = $1
+     RETURNING j.*, p.url`,
     [jobId, JSON.stringify(result)],
   );
 
@@ -115,10 +124,11 @@ export async function markJobCompleted(jobId: string, result: DiffResult): Promi
  */
 export async function markJobFailed(jobId: string, errorType: JobErrorType): Promise<MonitorJob | null> {
   const result = await DB.query<MonitorJobRow>(
-    `UPDATE monitor_jobs
+    `UPDATE monitor_jobs j
      SET status = 'FAILED', error_type = $2, completed_at = NOW()
-     WHERE id = $1
-     RETURNING *`,
+     FROM pages p
+     WHERE j.page_id = p.id AND j.id = $1
+     RETURNING j.*, p.url`,
     [jobId, errorType],
   );
 
@@ -138,7 +148,11 @@ export async function markJobFailed(jobId: string, errorType: JobErrorType): Pro
  */
 export async function getJobsByStatus(status: JobStatus): Promise<MonitorJob[]> {
   const result = await DB.query<MonitorJobRow>(
-    'SELECT * FROM monitor_jobs WHERE status = $1 ORDER BY created_at DESC',
+    `SELECT j.*, p.url 
+     FROM monitor_jobs j
+     JOIN pages p ON j.page_id = p.id
+     WHERE j.status = $1 
+     ORDER BY j.created_at DESC`,
     [status],
   );
 

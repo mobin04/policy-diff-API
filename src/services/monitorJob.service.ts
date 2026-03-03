@@ -249,27 +249,26 @@ export async function processMonitorJob(jobId: string, logger?: Logger): Promise
     }
 
     // Mark as processing
-    await markJobProcessing(jobId);
+    const updatedJob = await markJobProcessing(jobId);
 
-    if (logger) {
-      logger.debug({ jobId, pageId: job.pageId }, 'Job processing started');
-    }
-
-    // Get page details from database
-    const pageResult = await DB.query<{ url: string; isolation_fingerprint: string | null }>(
-      'SELECT url, isolation_fingerprint FROM pages WHERE id = $1',
-      [job.pageId],
-    );
-
-    if (pageResult.rows.length === 0) {
+    if (!updatedJob || !updatedJob.url) {
       await markJobFailed(jobId, 'INTERNAL_ERROR');
       if (logger) {
-        logger.error({ jobId, pageId: job.pageId }, 'Page not found for job');
+        logger.error({ jobId }, 'Failed to mark job as processing or URL missing');
       }
       return;
     }
 
-    const { url, isolation_fingerprint: previousFingerprint } = pageResult.rows[0];
+    if (logger) {
+      logger.debug({ jobId, pageId: updatedJob.pageId, url: updatedJob.url }, 'Job processing started');
+    }
+
+    const { url } = updatedJob;
+    const previousFingerprintResult = await DB.query<{ isolation_fingerprint: string | null }>(
+      'SELECT isolation_fingerprint FROM pages WHERE id = $1',
+      [updatedJob.pageId],
+    );
+    const previousFingerprint = previousFingerprintResult.rows[0]?.isolation_fingerprint ?? null;
 
     // Timeout enforcement: MAX_JOB_RUNTIME_MS (15000)
     const controller = new AbortController();

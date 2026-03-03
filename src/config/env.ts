@@ -78,4 +78,9 @@ export function validateProductionConfig() {
   if (INTERNAL_METRICS_TOKEN === 'dev-metrics-token') {
     throw new Error('SECURE CONFIG ERROR: INTERNAL_METRICS_TOKEN cannot use default value in production.');
   }
+
+  // 3. Ensure DATABASE_URL is not local in production
+  if (DATABASE_URL.includes('localhost') || DATABASE_URL.includes('127.0.0.1')) {
+    throw new Error('PROD DB ISOLATION ERROR: DATABASE_URL cannot point to localhost in production.');
+  }
 }

@@ -43,6 +43,7 @@ export type JobErrorType =
 export type MonitorJob = {
   id: string;
   pageId: number;
+  url?: string; // Canonical URL of the page
   apiKeyId: number | null;
   batchId: string | null;
   status: JobStatus;
@@ -59,6 +60,7 @@ export type MonitorJob = {
 export type MonitorJobRow = {
   id: string;
   page_id: number;
+  url?: string; // Joined from pages table
   api_key_id?: number | null;
   batch_id: string | null;
   status: JobStatus;
@@ -88,6 +90,7 @@ export type MonitorJobCreatedResponse = {
  * Response for GET /v1/jobs/:jobId when job is pending or processing
  */
 export type JobPendingResponse = {
+  url: string;
   job_id: string;
   status: 'PENDING' | 'PROCESSING';
 };
@@ -96,6 +99,7 @@ export type JobPendingResponse = {
  * Response for GET /v1/jobs/:jobId when job is completed
  */
 export type JobCompletedResponse = {
+  url: string;
   job_id: string;
   status: 'COMPLETED';
   result: DiffResult;
@@ -105,6 +109,7 @@ export type JobCompletedResponse = {
  * Response for GET /v1/jobs/:jobId when job has failed
  */
 export type JobFailedResponse = {
+  url: string;
   job_id: string;
   status: 'FAILED';
   error_type: JobErrorType;

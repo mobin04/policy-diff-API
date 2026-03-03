@@ -130,6 +130,6 @@ export async function getBatchStatus(batchId: string, apiKeyId: number): Promise
     completed: counts.completed,
     processing: counts.processing,
     failed: counts.failed,
-    jobs: jobs.map((j) => ({ job_id: j.jobId, status: j.status })),
+    jobs: jobs.map((j) => ({ url: j.url, job_id: j.jobId, status: j.status })),
   };
 }

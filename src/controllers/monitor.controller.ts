@@ -156,6 +156,7 @@ export async function getJobStatusController(
     case 'PENDING':
     case 'PROCESSING': {
       const pendingResponse: JobPendingResponse = {
+        url: job.url || '',
         job_id: job.id,
         status: job.status,
       };
@@ -165,6 +166,7 @@ export async function getJobStatusController(
 
     case 'COMPLETED': {
       const completedResponse: JobCompletedResponse = {
+        url: job.url || '',
         job_id: job.id,
         status: 'COMPLETED',
         result: job.result!,
@@ -175,6 +177,7 @@ export async function getJobStatusController(
 
     case 'FAILED': {
       const failedResponse: JobFailedResponse = {
+        url: job.url || '',
         job_id: job.id,
         status: 'FAILED',
         error_type: job.errorType!,

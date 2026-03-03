@@ -1,6 +1,6 @@
 import app from './app';
-import { PORT, HOST, validateProductionConfig } from './config';
-import { initDB, DB } from './db';
+import { PORT, HOST, validateProductionConfig, IS_PRODUCTION } from './config';
+import { DB } from './db';
 import { initializeJobService } from './services/monitorJob.service';
 import { getActiveJobCount } from './utils/concurrencyGuard';
 import { markAsInitialized } from './routes/health.route';
@@ -8,19 +8,14 @@ import {
   initReconciliation,
   reconcileConcurrencyState,
 } from './services/concurrencyReconciliation.service';
+import { performBackup } from './services/backup.service';
+import cron from 'node-cron';
 
 let reconciliationInterval: NodeJS.Timeout | null = null;
 let isShuttingDown = false;
 
 /**
  * Server Bootstrap and Lifecycle Management
- *
- * This file orchestrates:
- * 1. Secure configuration validation.
- * 2. Database initialization and migrations.
- * 3. Recovery of interrupted jobs.
- * 4. Concurrency reconciliation guard.
- * 5. Graceful shutdown on termination signals.
  */
 
 const start = async () => {
@@ -28,14 +23,19 @@ const start = async () => {
     // 1. Secure configuration enforcement
     validateProductionConfig();
 
-    // 2. Database initialization
-    await initDB();
+    // 2. Database readiness check (EXPLICIT migrations)
+    try {
+      await DB.query('SELECT 1 FROM applied_migrations LIMIT 1');
+    } catch (err) {
+      app.log.error('DATABASE_NOT_INITIALIZED: Run npm run migrate before starting server.');
+      process.exit(1);
+    }
 
     // 3. Mark any orphaned PROCESSING jobs as FAILED from previous server instance
     await initializeJobService(app.log);
     markAsInitialized();
 
-    // 4. Start concurrency reconciliation guard (every 10 seconds)
+    // 4. Start concurrency reconciliation guard
     initReconciliation(app.log);
     reconciliationInterval = setInterval(() => {
       reconcileConcurrencyState().catch((err: unknown) => {
@@ -43,7 +43,19 @@ const start = async () => {
       });
     }, 10000);
 
-    // 5. Start listening
+    // 5. Setup Deterministic Background Scheduling (Single Instance only)
+    if (IS_PRODUCTION) {
+      // Schedule DB Backup daily at 03:00 AM
+      cron.schedule('0 3 * * *', async () => {
+        try {
+          await performBackup(app.log);
+        } catch (err) {
+          // Error already logged by service
+        }
+      });
+    }
+
+    // 6. Start listening
     await app.listen({ port: PORT, host: HOST });
     app.log.info({ port: PORT, host: HOST }, 'Server started');
   } catch (err) {
@@ -61,7 +73,6 @@ const shutdown = async (signal: string) => {
 
   app.log.info({ signal }, 'Graceful shutdown initiated');
 
-  // Force exit after 15 seconds if graceful shutdown hangs
   setTimeout(() => {
     app.log.error('Graceful shutdown timed out, forcing exit');
     process.exit(1);
@@ -72,29 +83,20 @@ const shutdown = async (signal: string) => {
     reconciliationInterval = null;
   }
 
-  // Stop accepting new requests
   try {
     await app.close();
-    app.log.info('Fastify server closed (no longer accepting new requests)');
+    app.log.info('Fastify server closed');
   } catch (err) {
     app.log.error(err, 'Error closing Fastify server');
   }
 
-  // Wait for active monitor jobs to finish (max 10 seconds)
   let waitAttempts = 0;
   while (getActiveJobCount() > 0 && waitAttempts < 10) {
-    app.log.info({ activeJobs: getActiveJobCount() }, 'Waiting for active jobs to finish...');
+    app.log.info({ activeJobs: getActiveJobCount() }, 'Waiting for active jobs...');
     await new Promise((resolve) => setTimeout(resolve, 1000));
     waitAttempts++;
   }
 
-  if (getActiveJobCount() > 0) {
-    app.log.warn({ activeJobs: getActiveJobCount() }, 'Some jobs did not finish within shutdown timeout');
-  } else {
-    app.log.info('All active jobs completed');
-  }
-
-  // Close DB connections
   try {
     await DB.end();
     app.log.info('PostgreSQL pool closed');
@@ -106,7 +108,6 @@ const shutdown = async (signal: string) => {
   process.exit(0);
 };
 
-// Listen for termination signals
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
