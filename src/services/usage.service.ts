@@ -94,15 +94,11 @@ type ConsumeOptions = {
 };
 
 /**
- * Check quota and, if allowed, consume jobs atomically.
- *
- * This function:
- * - Resets monthly usage when quota_reset_at is in the past
- * - Ensures requestedJobs does not exceed tier max_batch_size (when enforced)
- * - Ensures monthly_usage + requestedJobs <= monthly_quota
- * - Increments monthly_usage within a transaction
+ * Check quota and, if allowed, consume jobs atomically using an existing client.
+ * Use this when you are already inside a transaction.
  */
-export async function consumeJobs(
+export async function consumeJobsWithClient(
+  client: typeof DB | { query: typeof DB.query },
   apiKeyId: number,
   requestedJobs: number,
   options: ConsumeOptions = {},
@@ -111,38 +107,48 @@ export async function consumeJobs(
     throw new Error('requestedJobs must be positive');
   }
 
+  const row = await loadUsageRowForUpdate(client, apiKeyId);
+  const tierConfig = getTierConfig(row.tier);
+
+  if (options.enforceBatchLimit && requestedJobs > tierConfig.maxBatchSize) {
+    throw new BatchLimitExceededError(`Batch size exceeds allowed tier limit of ${tierConfig.maxBatchSize}`);
+  }
+
+  const projectedUsage = row.monthly_usage + requestedJobs;
+  if (projectedUsage > row.monthly_quota) {
+    throw new QuotaExceededError('Monthly usage limit reached');
+  }
+
+  await client.query(
+    `UPDATE api_keys
+     SET monthly_usage = $2
+     WHERE id = $1`,
+    [row.id, projectedUsage],
+  );
+
+  const updatedRow: UsageRow = {
+    ...row,
+    monthly_usage: projectedUsage,
+  };
+
+  return buildSnapshot(updatedRow);
+}
+
+/**
+ * Check quota and, if allowed, consume jobs atomically.
+ */
+export async function consumeJobs(
+  apiKeyId: number,
+  requestedJobs: number,
+  options: ConsumeOptions = {},
+): Promise<UsageSnapshot> {
   const client = await DB.connect();
 
   try {
     await client.query('BEGIN');
-
-    const row = await loadUsageRowForUpdate(client, apiKeyId);
-    const tierConfig = getTierConfig(row.tier);
-
-    if (options.enforceBatchLimit && requestedJobs > tierConfig.maxBatchSize) {
-      throw new BatchLimitExceededError('Batch size exceeds allowed tier limit');
-    }
-
-    const projectedUsage = row.monthly_usage + requestedJobs;
-    if (projectedUsage > row.monthly_quota) {
-      throw new QuotaExceededError('Monthly usage limit reached');
-    }
-
-    await client.query(
-      `UPDATE api_keys
-       SET monthly_usage = $2
-       WHERE id = $1`,
-      [row.id, projectedUsage],
-    );
-
-    const updatedRow: UsageRow = {
-      ...row,
-      monthly_usage: projectedUsage,
-    };
-
+    const snapshot = await consumeJobsWithClient(client, apiKeyId, requestedJobs, options);
     await client.query('COMMIT');
-
-    return buildSnapshot(updatedRow);
+    return snapshot;
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;

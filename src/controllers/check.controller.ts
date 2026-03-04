@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { checkPage } from '../services/page.service';
+import { consumeJobs } from '../services/usage.service';
 
 /**
  * Request body type for /v1/check endpoint
@@ -56,7 +57,10 @@ export async function checkController(
     minInterval = parsed;
   }
 
-  // Delegate to service with options
+  // 1. Quota consumption (atomic)
+  await consumeJobs(request.apiKey!.id, 1);
+
+  // 2. Delegate to service with options
   const checkResult = await checkPage(url, {
     minInterval,
     logger: request.log,

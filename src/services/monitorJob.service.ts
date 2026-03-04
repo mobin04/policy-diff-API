@@ -39,7 +39,7 @@ import {
   PageAccessBlockedError,
   InvalidPageContentError,
 } from '../errors';
-import { loadUsageRowForUpdate } from './usage.service';
+import { loadUsageRowForUpdate, consumeJobsWithClient } from './usage.service';
 import { runCrashRecovery } from './startupRecoveryService';
 
 const MAX_JOB_RUNTIME_MS = 15000;
@@ -158,13 +158,9 @@ export async function createMonitorJob(
   try {
     await client.query('BEGIN');
 
-    // 1. Quota and URL limit consumption (atomic within transaction)
-    const usage = await loadUsageRowForUpdate(client, apiKeyId);
-    const tierConfig = getTierConfig(usage.tier);
-
-    if (usage.monthly_usage + 1 > usage.monthly_quota) {
-      throw new QuotaExceededError();
-    }
+    // 1. Quota consumption (atomic within transaction)
+    const usageSnapshot = await consumeJobsWithClient(client, apiKeyId, 1);
+    const tierConfig = getTierConfig(usageSnapshot.tier);
 
     // URL limit check
     const currentUrlCount = await countDistinctUrlsForKey(apiKeyId, client);
@@ -190,8 +186,6 @@ export async function createMonitorJob(
         throw new UrlLimitExceededError();
       }
     }
-
-    await client.query('UPDATE api_keys SET monthly_usage = monthly_usage + 1 WHERE id = $1', [apiKeyId]);
 
     // 2. Ensure page exists (upsert)
     const pageId = await ensurePageExists(canonicalUrl, client);

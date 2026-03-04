@@ -19,7 +19,7 @@ import {
   BatchLimitExceededError,
   UrlLimitExceededError,
 } from '../errors';
-import { loadUsageRowForUpdate } from './usage.service';
+import { loadUsageRowForUpdate, consumeJobsWithClient } from './usage.service';
 import { getTierConfig } from '../config/tierConfig';
 
 type Logger = {
@@ -55,17 +55,11 @@ export async function createMonitorBatch(
   try {
     await client.query('BEGIN');
 
-    // 1. Quota and Tier check
-    const usage = await loadUsageRowForUpdate(client, apiKeyId);
-    const tierConfig = getTierConfig(usage.tier);
-
-    if (uniqueUrls.length > tierConfig.maxBatchSize) {
-      throw new BatchLimitExceededError(`Batch size exceeds allowed tier limit of ${tierConfig.maxBatchSize}`);
-    }
-
-    if (usage.monthly_usage + uniqueUrls.length > usage.monthly_quota) {
-      throw new QuotaExceededError();
-    }
+    // 1. Quota and Tier check (atomic within transaction)
+    const usageSnapshot = await consumeJobsWithClient(client, apiKeyId, uniqueUrls.length, {
+      enforceBatchLimit: true,
+    });
+    const tierConfig = getTierConfig(usageSnapshot.tier);
 
     // 1.5. URL limit check
     const currentUrlCount = await countDistinctUrlsForKey(apiKeyId, client);
@@ -97,12 +91,6 @@ export async function createMonitorBatch(
     if (currentUrlCount + incomingNewUrls.length > tierConfig.maxUrls) {
       throw new UrlLimitExceededError();
     }
-
-    // Update usage
-    await client.query('UPDATE api_keys SET monthly_usage = monthly_usage + $2 WHERE id = $1', [
-      apiKeyId,
-      uniqueUrls.length,
-    ]);
 
     // 2. Batch record creation
     const batch = await createBatch(apiKeyId, uniqueUrls.length, client);

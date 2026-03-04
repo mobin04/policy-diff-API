@@ -46,10 +46,11 @@ describe('MonitorJobService', () => {
     };
     (DB.connect as jest.Mock).mockResolvedValue(mockClient);
     (canonicalizeUrl as jest.Mock).mockReturnValue(mockCanonicalUrl);
-    (usageService.loadUsageRowForUpdate as jest.Mock).mockResolvedValue({
+    (usageService.consumeJobsWithClient as jest.Mock).mockResolvedValue({
       tier: 'FREE',
-      monthly_usage: 0,
-      monthly_quota: 100
+      monthlyUsage: 1,
+      monthlyQuota: 100,
+      remaining: 99
     });
     (apiKeyRepository.countDistinctUrlsForKey as jest.Mock).mockResolvedValue(0);
     (pageRepository.ensurePageExists as jest.Mock).mockResolvedValue(1);
@@ -67,7 +68,7 @@ describe('MonitorJobService', () => {
         expect(mockClient.release).toHaveBeenCalled();
         
         expect(canonicalizeUrl).toHaveBeenCalledWith(mockUrl);
-        expect(usageService.loadUsageRowForUpdate).toHaveBeenCalled();
+        expect(usageService.consumeJobsWithClient).toHaveBeenCalled();
         expect(pageRepository.ensurePageExists).toHaveBeenCalledWith(mockCanonicalUrl, mockClient);
         expect(monitorJobRepository.createJob).toHaveBeenCalledWith(1, mockApiKeyId, null, mockClient);
       });
@@ -88,17 +89,13 @@ describe('MonitorJobService', () => {
 
     describe('failure scenarios', () => {
       test('should throw QuotaExceededError if limit reached', async () => {
-        (usageService.loadUsageRowForUpdate as jest.Mock).mockResolvedValue({
-          tier: 'FREE',
-          monthly_usage: 100,
-          monthly_quota: 100
-        });
+        (usageService.consumeJobsWithClient as jest.Mock).mockRejectedValue(new QuotaExceededError());
 
         await expect(monitorJobService.createMonitorJob(mockApiKeyId, mockUrl)).rejects.toThrow(QuotaExceededError);
         expect(mockClient.query).toHaveBeenCalledWith('ROLLBACK');
       });
 
-      test('should rollback on repository error', async () => {
+      test('should rollback on error', async () => {
         (monitorJobRepository.createJob as jest.Mock).mockRejectedValue(new Error('DB_FAIL'));
 
         await expect(monitorJobService.createMonitorJob(mockApiKeyId, mockUrl)).rejects.toThrow('DB_FAIL');
