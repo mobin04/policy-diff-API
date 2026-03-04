@@ -10,7 +10,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 type ProvisionBody = {
   email: string;
   name: string;
-  tier: 'FREE' | 'PRO' | 'ENTERPRISE';
+  tier: 'FREE' | 'STARTER' | 'PRO';
   environment: 'dev' | 'prod';
 };
 
@@ -31,8 +31,8 @@ export async function provisionHandler(request: FastifyRequest<{ Body: Provision
     return;
   }
 
-  if (tier !== 'FREE' && tier !== 'PRO' && tier !== 'ENTERPRISE') {
-    reply.status(400).send({ error: 'BadRequestError', message: 'Tier must be FREE, PRO, or ENTERPRISE' });
+  if (tier !== 'FREE' && tier !== 'STARTER' && tier !== 'PRO') {
+    reply.status(400).send({ error: 'BadRequestError', message: 'Tier must be FREE, STARTER, or PRO' });
     return;
   }
 

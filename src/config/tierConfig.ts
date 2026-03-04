@@ -1,37 +1,42 @@
 /**
- * API key tiers and limits.
+ * API key tiers and limits (V2).
  *
- * All numeric limits (monthly quotas, batch sizes) are centralized here
- * to avoid hardcoding values in multiple places.
+ * All numeric limits (monthly quotas, batch sizes, url limits, concurrency)
+ * are centralized here to avoid hardcoding values in multiple places.
  */
 
-export type ApiTier = 'FREE' | 'PRO' | 'ENTERPRISE';
+export type TierName = 'FREE' | 'STARTER' | 'PRO';
 
-export type TierConfig = {
-  /** Maximum jobs per month for this tier. */
+export interface TierConfig {
   monthlyQuota: number;
-  /** Maximum jobs allowed in a single batch submission. */
   maxBatchSize: number;
-};
+  maxUrls: number;
+  maxConcurrentJobs: number;
+}
 
-export const TIER_CONFIG: Record<ApiTier, TierConfig> = {
+export const TIER_CONFIG: Record<TierName, TierConfig> = {
   FREE: {
-    monthlyQuota: 100,
-    maxBatchSize: 5,
+    monthlyQuota: 30,
+    maxBatchSize: 3,
+    maxUrls: 3,
+    maxConcurrentJobs: 1,
+  },
+  STARTER: {
+    monthlyQuota: 500,
+    maxBatchSize: 10,
+    maxUrls: 10,
+    maxConcurrentJobs: 2,
   },
   PRO: {
-    monthlyQuota: 2000,
-    maxBatchSize: 20,
-  },
-  ENTERPRISE: {
-    // Represent "unlimited" with a very high ceiling.
-    monthlyQuota: 2_147_483_647,
-    maxBatchSize: 50,
+    monthlyQuota: 2500,
+    maxBatchSize: 25,
+    maxUrls: 25,
+    maxConcurrentJobs: 5,
   },
 };
 
 export function getTierConfig(tier: string): TierConfig {
-  if (tier === 'PRO' || tier === 'ENTERPRISE' || tier === 'FREE') {
+  if (tier === 'STARTER' || tier === 'PRO' || tier === 'FREE') {
     return TIER_CONFIG[tier];
   }
 

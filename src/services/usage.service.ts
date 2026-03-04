@@ -4,14 +4,14 @@ import { QuotaExceededError, BatchLimitExceededError } from '../errors';
 
 export type UsageRow = {
   id: number;
-  tier: 'FREE' | 'PRO' | 'ENTERPRISE';
+  tier: 'FREE' | 'STARTER' | 'PRO';
   monthly_quota: number;
   monthly_usage: number;
   quota_reset_at: Date;
 };
 
 export type UsageSnapshot = {
-  tier: 'FREE' | 'PRO' | 'ENTERPRISE';
+  tier: 'FREE' | 'STARTER' | 'PRO';
   monthlyQuota: number;
   monthlyUsage: number;
   remaining: number;
