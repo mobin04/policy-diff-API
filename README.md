@@ -100,11 +100,14 @@ The system enforces strict limits based on the assigned API key tier to ensure f
 | **Unique URL Limit** | 3 URLs | 10 URLs | 25 URLs |
 | **Concurrency Limit** | 1 job | 2 jobs | 5 jobs |
 | **Max Batch Size** | 3 URLs | 10 URLs | 25 URLs |
+| **Rate Limit (Burst)** | 30 requests | 120 requests | 600 requests |
+| **Refill Rate** | 0.5 req/sec | 2.0 req/sec | 10.0 req/sec |
 
 **Enforcement Notes:**
 - **URL Limit**: Measures the number of unique canonical URLs monitored across all jobs for a given key.
 - **Concurrency**: Hard limit on the number of jobs in the `PROCESSING` state simultaneously for a single key. Additional jobs are queued in memory.
 - **Quota**: Reset automatically on the 1st of every month at `00:00:00Z`.
+- **Rate Limiting**: Implemented via a **Tier-Aware Token Bucket** algorithm. Each request consumes 1 token. Tokens refill gradually based on the refill rate up to the burst capacity. Rejections return `429 Too Many Requests`.
 
 ## 4. System Architecture
 
