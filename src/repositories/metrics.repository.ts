@@ -1,5 +1,6 @@
 import { DB } from '../db';
 import { getActiveJobCount } from '../utils/concurrencyGuard';
+import { rateLimitHitCount, getActiveTokenBucketsCount } from '../plugins/tierTokenBucketLimiter';
 
 export type MetricsResponse = {
   total_jobs: number;
@@ -28,6 +29,8 @@ export type MetricsResponse = {
   client_error_count: number;
   high_error_rate_count: number;
   invalid_internal_token_attempt_count: number;
+  rate_limit_hit_count: number;
+  active_token_buckets: number;
   failure_breakdown: {
     TIMEOUT: number;
     DNS_FAILURE: number;
@@ -162,6 +165,8 @@ export async function getInternalMetrics(): Promise<MetricsResponse> {
     client_error_count: parseInt(summary.client_error_count || '0', 10),
     high_error_rate_count: parseInt(summary.high_error_rate_count || '0', 10),
     invalid_internal_token_attempt_count: parseInt(summary.invalid_internal_token_attempt_count || '0', 10),
+    rate_limit_hit_count: rateLimitHitCount,
+    active_token_buckets: getActiveTokenBucketsCount(),
     failure_breakdown: failure_breakdown as MetricsResponse['failure_breakdown'],
     in_memory_processing_jobs: inMemoryProcessingJobs,
     db_processing_jobs: dbProcessingJobs,

@@ -6,7 +6,7 @@ import { batchRoutes } from './routes/batch.route';
 import { usageRoutes } from './routes/usage.route';
 import { internalRoutes } from './routes/internal.route';
 import { apiKeyAuthPlugin } from './plugins/apiKeyAuth';
-import { globalRateLimitPlugin } from './plugins/globalRateLimit';
+import { tierTokenBucketLimiterPlugin } from './plugins/tierTokenBucketLimiter';
 import { requestIdPlugin } from './plugins/requestId';
 import { requestLoggerPlugin } from './plugins/requestLogger';
 import { NODE_ENV, LOG_LEVEL } from './config';
@@ -136,9 +136,6 @@ app.setErrorHandler((error: Error, request: FastifyRequest, reply: FastifyReply)
 // Plugin Registration Order Matters!
 // ==========================================
 
-// 0. Global Rate Limiter - protect server first
-app.register(globalRateLimitPlugin);
-
 // 1. Request ID - must be first to ensure all logs have request ID
 app.register(requestIdPlugin);
 
@@ -148,7 +145,10 @@ app.register(requestLoggerPlugin);
 // 3. API Key Auth - makes fastify.apiKeyAuth available
 app.register(apiKeyAuthPlugin);
 
-// 4. Public routes (no auth required)
+// 4. Tier-Aware Token Bucket Rate Limiter - depends on apiKeyAuth
+app.register(tierTokenBucketLimiterPlugin);
+
+// 5. Public routes (no auth required)
 app.register(healthRoutes);
 
 // 5. Protected routes under /v1 prefix

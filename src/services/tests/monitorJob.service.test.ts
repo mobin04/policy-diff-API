@@ -3,6 +3,7 @@ import { DB } from '../../db';
 import { canonicalizeUrl } from '../../utils/canonicalizeUrl';
 import * as pageRepository from '../../repositories/page.repository';
 import * as monitorJobRepository from '../../repositories/monitorJob.repository';
+import * as apiKeyRepository from '../../repositories/apiKey.repository';
 import * as idempotencyRepository from '../../repositories/idempotency.repository';
 import * as usageService from '../usage.service';
 import { QuotaExceededError } from '../../errors';
@@ -11,6 +12,7 @@ jest.mock('../../db');
 jest.mock('../../utils/canonicalizeUrl');
 jest.mock('../../repositories/page.repository');
 jest.mock('../../repositories/monitorJob.repository');
+jest.mock('../../repositories/apiKey.repository');
 jest.mock('../../repositories/idempotency.repository');
 jest.mock('../usage.service');
 
@@ -35,15 +37,21 @@ describe('MonitorJobService', () => {
     jest.clearAllMocks();
     
     mockClient = {
-      query: jest.fn(),
+      query: jest.fn().mockImplementation((sql) => {
+        if (sql.includes('SELECT id FROM pages')) return { rows: [] };
+        if (sql.includes('SELECT 1 FROM monitor_jobs')) return { rows: [] };
+        return { rows: [] };
+      }),
       release: jest.fn(),
     };
     (DB.connect as jest.Mock).mockResolvedValue(mockClient);
     (canonicalizeUrl as jest.Mock).mockReturnValue(mockCanonicalUrl);
     (usageService.loadUsageRowForUpdate as jest.Mock).mockResolvedValue({
+      tier: 'FREE',
       monthly_usage: 0,
       monthly_quota: 100
     });
+    (apiKeyRepository.countDistinctUrlsForKey as jest.Mock).mockResolvedValue(0);
     (pageRepository.ensurePageExists as jest.Mock).mockResolvedValue(1);
     (monitorJobRepository.createJob as jest.Mock).mockResolvedValue(mockJob);
   });
@@ -62,10 +70,6 @@ describe('MonitorJobService', () => {
         expect(usageService.loadUsageRowForUpdate).toHaveBeenCalled();
         expect(pageRepository.ensurePageExists).toHaveBeenCalledWith(mockCanonicalUrl, mockClient);
         expect(monitorJobRepository.createJob).toHaveBeenCalledWith(1, mockApiKeyId, null, mockClient);
-        
-        // Note: enqueueMonitorJobProcessing is called internally. 
-        // Direct internal calls in the same module cannot be verified with Jest 
-        // without refactoring the source code to use an exported object or DI.
       });
 
       test('should store idempotency if requested', async () => {
@@ -85,6 +89,7 @@ describe('MonitorJobService', () => {
     describe('failure scenarios', () => {
       test('should throw QuotaExceededError if limit reached', async () => {
         (usageService.loadUsageRowForUpdate as jest.Mock).mockResolvedValue({
+          tier: 'FREE',
           monthly_usage: 100,
           monthly_quota: 100
         });
