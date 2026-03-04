@@ -12,7 +12,7 @@ export type ApiKey = {
   environment: ApiKeyEnvironment;
   isActive: boolean;
   createdAt: Date;
-  tier: 'FREE' | 'PRO' | 'ENTERPRISE';
+  tier: 'FREE' | 'STARTER' | 'PRO';
   monthlyQuota: number;
   monthlyUsage: number;
   quotaResetAt: Date;
@@ -26,7 +26,7 @@ export type ApiKeyRow = {
   environment: ApiKeyEnvironment;
   is_active: boolean;
   created_at: Date;
-  tier: 'FREE' | 'PRO' | 'ENTERPRISE';
+  tier: 'FREE' | 'STARTER' | 'PRO';
   monthly_quota: number;
   monthly_usage: number;
   quota_reset_at: Date;
@@ -35,7 +35,7 @@ export type ApiKeyRow = {
 export type CreateApiKeyInput = {
   email: string;
   name: string;
-  tier: 'FREE' | 'PRO' | 'ENTERPRISE';
+  tier: 'FREE' | 'STARTER' | 'PRO';
   environment: ApiKeyEnvironment;
   monthlyQuota: number;
 };

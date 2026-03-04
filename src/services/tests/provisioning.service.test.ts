@@ -39,7 +39,7 @@ describe('ProvisioningService', () => {
         name: mockInput.name,
         tier: mockInput.tier,
         environment: mockInput.environment,
-        monthlyQuota: 100, // FREE tier
+        monthlyQuota: 30, // FREE tier V2
       });
     });
 
@@ -54,6 +54,18 @@ describe('ProvisioningService', () => {
       expect(result.rawKey).toMatch(/^pd_live_[a-f0-9]{64}$/);
     });
 
+    test('should assign correct quota for STARTER tier', async () => {
+      (apiKeyRepository.findActiveByEmail as jest.Mock).mockResolvedValue(null);
+      
+      await provisionApiKey({
+        ...mockInput,
+        tier: 'STARTER',
+      });
+
+      const lastCall = (apiKeyRepository.insertProvisionedKey as jest.Mock).mock.calls[0];
+      expect(lastCall[1].monthlyQuota).toBe(500);
+    });
+
     test('should assign correct quota for PRO tier', async () => {
       (apiKeyRepository.findActiveByEmail as jest.Mock).mockResolvedValue(null);
       
@@ -63,19 +75,7 @@ describe('ProvisioningService', () => {
       });
 
       const lastCall = (apiKeyRepository.insertProvisionedKey as jest.Mock).mock.calls[0];
-      expect(lastCall[1].monthlyQuota).toBe(2000);
-    });
-
-    test('should assign correct quota for ENTERPRISE tier', async () => {
-      (apiKeyRepository.findActiveByEmail as jest.Mock).mockResolvedValue(null);
-      
-      await provisionApiKey({
-        ...mockInput,
-        tier: 'ENTERPRISE',
-      });
-
-      const lastCall = (apiKeyRepository.insertProvisionedKey as jest.Mock).mock.calls[0];
-      expect(lastCall[1].monthlyQuota).toBe(2147483647);
+      expect(lastCall[1].monthlyQuota).toBe(2500);
     });
   });
 

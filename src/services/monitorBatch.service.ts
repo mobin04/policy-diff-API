@@ -8,10 +8,17 @@ import {
   getBatchJobCounts,
   listBatchJobs,
 } from '../repositories/monitorBatch.repository';
+import { countDistinctUrlsForKey } from '../repositories/apiKey.repository';
 import { saveIdempotencyRecord } from '../repositories/idempotency.repository';
 import { canAcceptNewJobs, enqueueMonitorJobProcessing } from './monitorJob.service';
 import { BatchStatusResponse, MonitorBatchCreatedResponse } from '../types';
-import { BadRequestError, TooManyRequestsError, QuotaExceededError, BatchLimitExceededError } from '../errors';
+import {
+  BadRequestError,
+  TooManyRequestsError,
+  QuotaExceededError,
+  BatchLimitExceededError,
+  UrlLimitExceededError,
+} from '../errors';
 import { loadUsageRowForUpdate } from './usage.service';
 import { getTierConfig } from '../config/tierConfig';
 
@@ -53,11 +60,42 @@ export async function createMonitorBatch(
     const tierConfig = getTierConfig(usage.tier);
 
     if (uniqueUrls.length > tierConfig.maxBatchSize) {
-      throw new BatchLimitExceededError('Batch size exceeds allowed tier limit');
+      throw new BatchLimitExceededError(`Batch size exceeds allowed tier limit of ${tierConfig.maxBatchSize}`);
     }
 
     if (usage.monthly_usage + uniqueUrls.length > usage.monthly_quota) {
       throw new QuotaExceededError();
+    }
+
+    // 1.5. URL limit check
+    const currentUrlCount = await countDistinctUrlsForKey(apiKeyId, client);
+    const incomingNewUrls: string[] = [];
+
+    // Check which of the incoming URLs are new for this key
+    for (const url of uniqueUrls) {
+      const pageIdResult = await client.query<{ id: number }>(
+        'SELECT id FROM pages WHERE url = $1',
+        [url]
+      );
+      
+      let alreadyMonitored = false;
+      if (pageIdResult.rows.length > 0) {
+        const jobCheck = await client.query(
+          'SELECT 1 FROM monitor_jobs WHERE api_key_id = $1 AND page_id = $2 LIMIT 1',
+          [apiKeyId, pageIdResult.rows[0].id]
+        );
+        if (jobCheck.rows.length > 0) {
+          alreadyMonitored = true;
+        }
+      }
+
+      if (!alreadyMonitored) {
+        incomingNewUrls.push(url);
+      }
+    }
+
+    if (currentUrlCount + incomingNewUrls.length > tierConfig.maxUrls) {
+      throw new UrlLimitExceededError();
     }
 
     // Update usage

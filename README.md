@@ -8,22 +8,23 @@ This document provides a comprehensive overview of the PolicyDiff system archite
 
 1.  [Project Overview](#1-project-overview)
 2.  [Key Features](#2-key-features)
-3.  [System Architecture](#3-system-architecture)
-4.  [Async Monitoring Model](#4-async-monitoring-model)
-5.  [Batch Monitoring](#5-batch-monitoring)
-6.  [Database Schema Overview](#6-database-schema-overview)
-7.  [Monitoring Flow (End-to-End)](#7-monitoring-flow-end-to-end)
-8.  [API Reference](#8-api-reference)
-9.  [Error Handling Model](#9-error-handling-model)
-10. [Performance & Optimization](#10-performance--optimization)
-11. [Security Model](#11-security-model)
-12. [Production Considerations](#12-production-considerations)
-13. [Local Development Setup](#13-local-development-setup)
-14. [Environment Variables](#14-environment-variables)
-15. [Design Principles](#15-design-principles)
-16. [Deterministic Replay Validation](#16-deterministic-replay-validation)
-17. [Roadmap](#17-roadmap)
-18. [License](#18-license)
+3.  [Tier System (Pricing)](#3-tier-system-pricing)
+4.  [System Architecture](#4-system-architecture)
+5.  [Async Monitoring Model](#5-async-monitoring-model)
+6.  [Batch Monitoring](#6-batch-monitoring)
+7.  [Database Schema Overview](#7-database-schema-overview)
+8.  [Monitoring Flow (End-to-End)](#8-monitoring-flow-end-to-end)
+9.  [API Reference](#9-api-reference)
+10. [Error Handling Model](#10-error-handling-model)
+11. [Performance & Optimization](#11-performance--optimization)
+12. [Security Model](#12-security-model)
+13. [Production Considerations](#13-production-considerations)
+14. [Local Development Setup](#14-local-development-setup)
+15. [Environment Variables](#15-environment-variables)
+16. [Design Principles](#16-design-principles)
+17. [Deterministic Replay Validation](#17-deterministic-replay-validation)
+18. [Roadmap](#18-roadmap)
+19. [License](#19-license)
 
 ## 1. Project Overview
 
@@ -67,8 +68,7 @@ The system is built on a foundation of discrete, purposeful features:
 -   **API Key Authentication**: Secures all endpoints with bearer token authentication.
 -   **Dev vs. Prod Keys**: Supports separate key environments (`pd_dev_...`, `pd_prod_...`) for safe development and testing.
 -   **SHA-256 Key Hashing**: Hashes all API keys before storage; raw keys are never stored.
--   **Quota Enforcement**: Enforces per-key monthly job quotas with deterministic, backend-only atomic checks.
--   **API Key Tiering**: Classifies keys into `FREE`, `PRO`, and `ENTERPRISE` tiers with explicit per-key quotas.
+-   **API Key Tiering (V2)**: Classifies keys into `FREE`, `STARTER`, and `PRO` tiers with strictly enforced per-key quotas, URL limits, and concurrency ceilings.
 -   **Usage Quotas**: Enforces per-key monthly job quotas with deterministic, backend-only checks.
 -   **Observability Layer**:
     -   **Request IDs**: Injects a unique `x-request-id` into all logs and responses for end-to-end tracing.
@@ -86,10 +86,27 @@ The system is built on a foundation of discrete, purposeful features:
     -   **Idempotency Keys**: Prevents duplicate job creation via `Idempotency-Key` header.
     -   **Crash Recovery**: Automatically fails "stuck" jobs on server startup.
     -   **Job Timeout Enforcement**: Hard 15s limit on job execution to prevent resource leaks.
-    -   **Per-API-Key Concurrency**: Fair-use limit of 2 concurrent jobs per API key.
+    -   **Per-API-Key Concurrency**: Fair-use limit of concurrent jobs based on tier configuration.
     -   **Internal Metrics**: Protected endpoint for real-time system observability.
 
-## 3. System Architecture
+## 3. Tier System (Pricing)
+
+The system enforces strict limits based on the assigned API key tier to ensure fair resource distribution and system stability.
+
+| Feature | FREE | STARTER | PRO |
+| :--- | :--- | :--- | :--- |
+| **Price** | $0 | $39/month | $99/month |
+| **Monthly Quota** | 30 jobs | 500 jobs | 2,500 jobs |
+| **Unique URL Limit** | 3 URLs | 10 URLs | 25 URLs |
+| **Concurrency Limit** | 1 job | 2 jobs | 5 jobs |
+| **Max Batch Size** | 3 URLs | 10 URLs | 25 URLs |
+
+**Enforcement Notes:**
+- **URL Limit**: Measures the number of unique canonical URLs monitored across all jobs for a given key.
+- **Concurrency**: Hard limit on the number of jobs in the `PROCESSING` state simultaneously for a single key. Additional jobs are queued in memory.
+- **Quota**: Reset automatically on the 1st of every month at `00:00:00Z`.
+
+## 4. System Architecture
 
 The application follows a standard layered architecture to ensure a clear separation of concerns.
 
@@ -108,7 +125,7 @@ The core analysis pipeline follows a deterministic lifecycle:
 
 This separation ensures that business logic is independent of the transport layer (Fastify) and the persistence layer (PostgreSQL), making the system easier to test, maintain, and evolve.
 
-## 4. Async Monitoring Model
+## 5. Async Monitoring Model
 
 The initial synchronous model was replaced with an asynchronous, job-based architecture to handle the long-running nature of fetching and analyzing external web pages. A synchronous request could lead to HTTP timeouts and poor client-side experience.
 
@@ -118,7 +135,7 @@ The async model works as follows:
 2.  The API validates the request and checks an overload policy (bounded in-memory queue).
 3.  A job is created in the `monitor_jobs` table with `PENDING` status.
 4.  The API immediately returns a `202 Accepted` response with the `job_id`.
-5.  A background worker processes jobs, respecting the concurrency limit.
+5.  A background worker processes jobs, respecting the global and per-key concurrency limits.
 
 Jobs created via `POST /v1/monitor/batch` follow the same lifecycle, but include a `batch_id` that links them to a `monitor_batches` row for aggregated polling.
 
@@ -149,13 +166,13 @@ To prevent resource exhaustion from hanging network connections or heavy process
 
 **Per-API-Key Concurrency Limit:**
 
-In addition to the global concurrency guard, the system enforces a per-API-key limit of **2 concurrent jobs**. If an API key already has 2 jobs in the `PROCESSING` state, any further jobs for that key will remain `PENDING` until a slot frees up. The system will automatically retry re-enqueuing these jobs after a 1000ms delay. This ensures fair resource distribution across all clients and prevents a single key from monopolizing the background workers.
+In addition to the global concurrency guard, the system enforces a per-API-key limit based on the tier. If an API key already has its maximum number of jobs in the `PROCESSING` state, any further jobs for that key will remain `PENDING` until a slot frees up. The system will automatically retry re-enqueuing these jobs after a 1000ms delay. This ensures fair resource distribution across all clients and prevents a single key from monopolizing the background workers.
 
-## 5. Batch Monitoring
+## 6. Batch Monitoring
 
 Batch Monitoring allows clients to submit multiple URLs in a single request and track them under one `batch_id`.
 
--   **Submission**: `POST /v1/monitor/batch` accepts up to 20 URLs, canonicalizes and deduplicates them, creates one `monitor_batches` row, and creates one `monitor_jobs` row per URL with `batch_id` set.
+-   **Submission**: `POST /v1/monitor/batch` accepts up to 25 URLs (depending on tier), canonicalizes and deduplicates them, creates one `monitor_batches` row, and creates one `monitor_jobs` row per URL with `batch_id` set.
 -   **Status polling**: `GET /v1/batches/:batchId` returns aggregated counts (`completed`, `processing`, `failed`) and a deterministic list of jobs ordered by `created_at ASC`.
 
 **Concurrency behavior:**
@@ -164,7 +181,7 @@ Batch Monitoring allows clients to submit multiple URLs in a single request and 
 -   When at capacity, additional jobs remain `PENDING` and are queued in memory until a slot becomes available.
 -   The API only returns `429 Too Many Requests` when the server is overloaded and cannot safely queue more jobs.
 
-## 6. Database Schema Overview
+## 7. Database Schema Overview
 
 The database schema is designed to be normalized and efficient, with clear purposes for each table.
 
@@ -180,7 +197,7 @@ The database schema is designed to be normalized and efficient, with clear purpo
 
 -   **`api_keys`**
     -   **Purpose**: Manages API keys for authentication, rate limiting, and usage/tiers.
-    -   **Key Columns**: `id` (SERIAL PK), `key_hash` (UNIQUE TEXT), `email` (TEXT NOT NULL/UNIQUE), `tier` (`FREE`/`PRO`/`ENTERPRISE`), `monthly_quota` (INTEGER), `monthly_usage` (INTEGER), `quota_reset_at` (TIMESTAMPTZ).
+    -   **Key Columns**: `id` (SERIAL PK), `key_hash` (UNIQUE TEXT), `email` (TEXT NOT NULL/UNIQUE), `tier` (`FREE`/`STARTER`/`PRO`), `monthly_quota` (INTEGER), `monthly_usage` (INTEGER), `quota_reset_at` (TIMESTAMPTZ).
     -   **Indexing**: A unique index on `key_hash` provides fast O(1) lookups during authentication. Additional indexes on `tier` and `quota_reset_at` support operational queries and maintenance.
 
 -   **`api_logs`**
@@ -198,13 +215,13 @@ The database schema is designed to be normalized and efficient, with clear purpo
     -   **Key Columns**: `id` (UUID PK), `page_id` (FK to `pages.id`), `batch_id` (nullable FK to `monitor_batches.id`), `status` (VARCHAR), `result` (JSONB), `error_type` (VARCHAR).
     -   **Indexing**: Indexes on `page_id`, `status`, and `batch_id` allow for efficient querying by page, state, and batch aggregation.
 
-## 7. Monitoring Flow (End-to-End)
+## 8. Monitoring Flow (End-to-End)
 
 The core pipeline executes in the following order:
 
 **Batch-level flow:**
 
-1.  Client submits `POST /v1/monitor/batch` with up to 20 URLs.
+1.  Client submits `POST /v1/monitor/batch` with up to 25 URLs (tier-dependent).
 2.  API canonicalizes and deduplicates URLs, creates a `monitor_batches` row, then creates `monitor_jobs` rows linked by `batch_id`.
 3.  Jobs transition through the same state machine (`PENDING → PROCESSING → COMPLETED/FAILED`).
 4.  Client polls `GET /v1/batches/:batchId` for aggregated progress and per-job status.
@@ -220,7 +237,7 @@ The core pipeline executes in the following order:
 9.  **Result Storage**: If changes were found, a new record is created in `page_versions`. The final analysis is stored in the `monitor_jobs` table's `result` column.
 10. **Job Completion**: The job status is updated to `COMPLETED` or `FAILED`.
 
-## 8. API Reference
+## 9. API Reference
 
 All endpoints are prefixed with `/v1`. Authentication is required via an `Authorization: Bearer <key>` header.
 
@@ -297,6 +314,7 @@ Retrieves the status and result of a monitoring job.
 
 ```json
 {
+  "url": "https://example.com/privacy",
   "job_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
   "status": "PROCESSING"
 }
@@ -306,6 +324,7 @@ Retrieves the status and result of a monitoring job.
 
 ```json
 {
+  "url": "https://example.com/privacy",
   "job_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
   "status": "COMPLETED",
   "result": {
@@ -344,6 +363,7 @@ For `MODIFIED` sections, the `details` field provides a granular word-level diff
 
 ```json
 {
+  "url": "https://example.com/privacy",
   "job_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
   "status": "FAILED",
   "error_type": "TIMEOUT"
@@ -368,11 +388,11 @@ Retrieves the aggregated status of a batch and a deterministic list of its jobs 
   "processing": 1,
   "failed": 1,
   "jobs": [
-    { "job_id": "11111111-1111-1111-1111-111111111111", "status": "COMPLETED" },
-    { "job_id": "22222222-2222-2222-2222-222222222222", "status": "COMPLETED" },
-    { "job_id": "33333333-3333-3333-3333-333333333333", "status": "COMPLETED" },
-    { "job_id": "44444444-4444-4444-4444-444444444444", "status": "PROCESSING" },
-    { "job_id": "55555555-5555-5555-5555-555555555555", "status": "FAILED" }
+    { "url": "https://url1.com", "job_id": "1111", "status": "COMPLETED" },
+    { "url": "https://url2.com", "job_id": "2222", "status": "COMPLETED" },
+    { "url": "https://url3.com", "job_id": "3333", "status": "COMPLETED" },
+    { "url": "https://url4.com", "job_id": "4444", "status": "PROCESSING" },
+    { "url": "https://url5.com", "job_id": "5555", "status": "FAILED" }
   ]
 }
 ```
@@ -390,9 +410,9 @@ Returns the current tier and usage metrics for the authenticated API key.
 ```json
 {
   "tier": "FREE",
-  "monthly_quota": 100,
-  "monthly_usage": 42,
-  "remaining": 58,
+  "monthly_quota": 30,
+  "monthly_usage": 12,
+  "remaining": 18,
   "quota_reset_at": "2026-03-01T00:00:00Z"
 }
 ```
@@ -404,54 +424,6 @@ A protected endpoint that provides system-wide performance and job metrics aggre
 **X-Internal-Token Header:**
 
 Clients must provide an `X-Internal-Token: <token>` header to access this endpoint. The token is configured in the environment variables.
-
-**Example Response (200 OK):**
-
-```json
-{
-  "total_jobs": 1250,
-  "completed_jobs": 1100,
-  "failed_jobs": 140,
-  "processing_jobs": 10,
-  "average_processing_time_ms": 4200,
-  "high_risk_count": 45,
-  "medium_risk_count": 120,
-  "low_risk_count": 935,
-  "content_isolation_success_count": 1050,
-  "content_isolation_fallback_count": 50,
-  "failure_breakdown": {
-    "TIMEOUT": 20,
-    "DNS_ERROR": 15,
-    "CRASH_RECOVERY": 5,
-    "JOB_TIMEOUT": 10,
-    "INTERNAL_ERROR": 90
-  }
-}
-```
-
-### `GET /health`
-
-A liveness probe that returns `200 OK` if the server is running.
-
-**Example Response:**
-
-```json
-{
-  "status": "ok"
-}
-```
-
-### `GET /ready`
-
-A readiness probe that checks dependencies (e.g., database connection). Returns `503 Service Unavailable` if not ready.
-
-**Example Response (Ready):**
-
-```json
-{
-  "status": "ready"
-}
-```
 
 ### `POST /v1/internal/provision`
 
@@ -466,7 +438,7 @@ Requires `X-Provision-Secret: <token>` configured by the `PROVISION_SECRET` env 
 {
   "email": "user@example.com",
   "name": "Production Key",
-  "tier": "FREE",
+  "tier": "STARTER",
   "environment": "live"
 }
 ```
@@ -483,7 +455,7 @@ Requires `X-Provision-Secret: <token>` configured by the `PROVISION_SECRET` env 
 - Keys are generated securely with SHA-256 hashes in the database.
 - Enforces one active key per email.
 - Returns the key ONCE.
-- Replaces legacy per-key `usage_count` with monthly quota enforcement.
+- Tiers: `FREE`, `STARTER`, `PRO`. Default is `FREE`.
 
 **Error Contract:**
 
@@ -497,12 +469,13 @@ All API errors follow a standard format.
 }
 ```
 
-Additional error codes introduced by quota and tier enforcement:
+Additional error codes:
 
 -   `QUOTA_EXCEEDED`: The API key has reached its monthly job quota.
+-   `URL_LIMIT_EXCEEDED`: The API key has reached its maximum unique URL limit.
 -   `BATCH_LIMIT_EXCEEDED`: The requested batch size exceeds the tier's allowed maximum.
 
-## 9. Error Handling Model
+## 10. Error Handling Model
 
 The system uses a deterministic error classification model. Internal application errors are mapped to a fixed set of public-facing error types, ensuring that no internal implementation details (like stack traces) are ever exposed to the client.
 
@@ -628,7 +601,7 @@ The isolation status is tracked and available in system metrics:
 
 The Isolation Layer relies on standard semantic HTML or common CSS conventions. If a site uses non-standard layouts or embeds policy content inside deeply nested, non-semantic `<div>` structures without standard IDs or classes, the engine may fall back to the full body.
 
-## 10. Performance & Optimization
+## 11. Performance & Optimization
 
 Several strategies are employed to ensure efficient operation:
 
@@ -638,7 +611,7 @@ Several strategies are employed to ensure efficient operation:
 -   **Cached Result Usage**: If a request is made during a cooldown period, the previously computed result (`last_result`) is returned instantly.
 -   **Early Exit Logic**: The pipeline terminates immediately if the overall content hash has not changed, saving significant CPU cycles.
 
-## 11. Security Model
+## 12. Security Model
 
 Security is a core design principle, implemented through several layers:
 
@@ -647,14 +620,14 @@ Security is a core design principle, implemented through several layers:
 -   **No Sensitive Logs**: Request and response bodies, which may contain sensitive information, are never written to audit logs.
 -   **Rate Limiting**: A per-key counter prevents abuse and ensures fair usage.
 -   **Quota Enforcement**: Per-key monthly job quotas are enforced deterministically at job creation time; excess usage is rejected with a clear error contract.
--   **Tier Restrictions**: FREE, PRO, and ENTERPRISE tiers are enforced server-side, including batch-size limits and quota ceilings.
+-   **Tier Restrictions**: `FREE`, `STARTER`, and `PRO` tiers are enforced server-side, including batch-size limits, URL limits, and quota ceilings.
 -   **Deterministic Behavior**: The predictable, rule-based nature of the system makes it less susceptible to adversarial inputs designed to exploit unpredictable AI models.
 
-## 12. Production Considerations
+## 13. Production Considerations
 
 -   **Deterministic Fail Strategy**: PolicyDiff prioritizes system reliability over automatic retries. If a server crashes or a job times out, it is marked as `FAILED` with an explicit reason (`CRASH_RECOVERY` or `JOB_TIMEOUT`), providing an auditable state.
 -   **Idempotency Model**: Request deduplication using the `Idempotency-Key` header ensures that clients can safely retry `POST` requests without side effects. The server hashes request bodies (SHA-256) to ensure identity consistency.
--   **Per-Key Fairness**: The system limits each API key to 2 concurrent jobs. This prevents any single client from saturating the worker pool and ensures fairness across all users.
+-   **Per-Key Fairness**: The system limits each API key to a specific number of concurrent jobs based on its tier. This prevents any single client from saturating the worker pool and ensures fairness across all users.
 -   **Internal Metrics Access**: Monitoring of system health is performed via a dedicated, protected metrics endpoint that aggregates job statistics directly from the database, minimizing overhead.
 -   **Single-Instance Async Limitation**: The current async job system relies on an in-memory concurrency guard and is **not safe for multi-instance deployments**. Running more than one instance will lead to incorrect concurrency management.
 -   **No Distributed Queue**: The system uses the `monitor_jobs` table in PostgreSQL as a simple job queue. This is sufficient for a single-node deployment but is not a scalable, distributed queue like Redis/BullMQ or RabbitMQ.
@@ -757,7 +730,7 @@ They do not alter API behavior.
 They provide operational visibility only.
 
 
-## 13. Local Development Setup
+## 14. Local Development Setup
 
 1.  **Node.js**: Requires Node.js v20 or later.
 2.  **PostgreSQL**: A running PostgreSQL instance is required.
@@ -789,7 +762,7 @@ They provide operational visibility only.
 
     The command will output the raw API key. Store it securely.
 
-## 14. Environment Variables
+## 15. Environment Variables
 
 The following environment variables must be configured in a `.env.config` file:
 
@@ -798,7 +771,7 @@ The following environment variables must be configured in a `.env.config` file:
     -   Format: `postgresql://USER:PASSWORD@HOST:PORT/DATABASE`
 -   `NODE_ENV`: The application environment (`development` or `production`).
 
-## 15. Design Principles
+## 16. Design Principles
 
 -   **Deterministic over Probabilistic**: Risk classification uses expanded deterministic keyword coverage (GDPR, CCPA, arbitration, etc.) instead of probabilistic scoring.
 -   **Reliability over Features**: System stability and data integrity are paramount.
@@ -807,7 +780,7 @@ The following environment variables must be configured in a `.env.config` file:
 -   **No UI Until Necessary**: Focus on a robust, API-first architecture.
 -   **Predictable JSON Contract**: Maintain a stable and well-documented API contract.
 
-## 16. Deterministic Replay Validation
+## 17. Deterministic Replay Validation
 
 PolicyDiff guarantees deterministic behavior through a replay validation system.
 
@@ -871,7 +844,7 @@ npx ts-node scripts/replay-validate.ts 123e4567-e89b-12d3-a456-426614174000 20
 
 This implementation only helps the developers and system operators directly. It is an internal quality assurance tool, not a feature for end-users.
 
-## 17. Roadmap
+## 18. Roadmap
 
 -   **Distributed Job Queue**: Migrate from the PostgreSQL-based queue to a scalable solution like BullMQ with Redis to support multi-instance deployments.
 -   **Webhooks**: Implement webhooks to notify clients upon job completion, removing the need for polling.
@@ -924,7 +897,7 @@ For critical monitoring requests, always provide an `Idempotency-Key` header.
 
 ### 4. Batch Monitoring Integration
 When monitoring multiple pages, use the batch endpoint to minimize overhead.
-- Submit up to 20 URLs via `POST /v1/monitor/batch`.
+- Submit up to 25 URLs via `POST /v1/monitor/batch`.
 - Poll the `batch_id` via `GET /v1/batches/:id` to track overall progress.
 
 ### 5. Monitor Usage
@@ -935,6 +908,6 @@ Track your quota consumption via `GET /v1/usage`.
 - **Single Instance**: The current concurrency guard and rate limiting are in-memory. Horizontal scaling is not supported in the current version.
 - **Polling**: Real-time webhooks are on the roadmap; polling is currently required for job results.
 
-## 18. License
+## 19. License
 
 This project is licensed under the ISC License.

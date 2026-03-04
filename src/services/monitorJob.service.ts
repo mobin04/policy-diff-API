@@ -25,13 +25,16 @@ import {
   getActiveJobCountForKey,
 } from '../repositories/monitorJob.repository';
 import { saveIdempotencyRecord } from '../repositories/idempotency.repository';
-import { MonitorJob, JobErrorType, DiffResult, Section, Change } from '../types'; // Added Change
+import { countDistinctUrlsForKey } from '../repositories/apiKey.repository';
+import { getTierConfig } from '../config/tierConfig';
+import { MonitorJob, JobErrorType, DiffResult, Section, Change, ApiKey } from '../types';
 import {
   InvalidUrlError,
   FetchError,
   HttpError,
   isApiError,
   QuotaExceededError,
+  UrlLimitExceededError,
   UnsupportedDynamicPageError,
   PageAccessBlockedError,
   InvalidPageContentError,
@@ -40,7 +43,6 @@ import { loadUsageRowForUpdate } from './usage.service';
 import { runCrashRecovery } from './startupRecoveryService';
 
 const MAX_JOB_RUNTIME_MS = 15000;
-const MAX_CONCURRENT_JOBS_PER_KEY = 2;
 
 /**
  * Logger interface matching Fastify's logger
@@ -156,11 +158,39 @@ export async function createMonitorJob(
   try {
     await client.query('BEGIN');
 
-    // 1. Quota consumption: single job (atomic within transaction)
+    // 1. Quota and URL limit consumption (atomic within transaction)
     const usage = await loadUsageRowForUpdate(client, apiKeyId);
+    const tierConfig = getTierConfig(usage.tier);
+
     if (usage.monthly_usage + 1 > usage.monthly_quota) {
       throw new QuotaExceededError();
     }
+
+    // URL limit check
+    const currentUrlCount = await countDistinctUrlsForKey(apiKeyId, client);
+    if (currentUrlCount >= tierConfig.maxUrls) {
+      // Need to check if THIS specific URL is already monitored
+      const pageIdResult = await client.query<{ id: number }>(
+        'SELECT id FROM pages WHERE url = $1',
+        [canonicalUrl]
+      );
+      
+      let alreadyMonitored = false;
+      if (pageIdResult.rows.length > 0) {
+        const jobCheck = await client.query(
+          'SELECT 1 FROM monitor_jobs WHERE api_key_id = $1 AND page_id = $2 LIMIT 1',
+          [apiKeyId, pageIdResult.rows[0].id]
+        );
+        if (jobCheck.rows.length > 0) {
+          alreadyMonitored = true;
+        }
+      }
+
+      if (!alreadyMonitored) {
+        throw new UrlLimitExceededError();
+      }
+    }
+
     await client.query('UPDATE api_keys SET monthly_usage = monthly_usage + 1 WHERE id = $1', [apiKeyId]);
 
     // 2. Ensure page exists (upsert)
@@ -233,13 +263,16 @@ export async function processMonitorJob(jobId: string, logger?: Logger): Promise
       return;
     }
 
-    // Per-API-key concurrency limit: MAX_CONCURRENT_JOBS_PER_KEY (2)
+    // Per-API-key concurrency limit based on tier
     // This ensures fairness across keys and prevents a single key from hogging the system.
     if (job.apiKeyId != null) {
+      const usage = await loadUsageRowForUpdate(DB, job.apiKeyId); // Use default pool
+      const tierConfig = getTierConfig(usage.tier);
       const activeJobsForKey = await getActiveJobCountForKey(job.apiKeyId);
-      if (activeJobsForKey >= MAX_CONCURRENT_JOBS_PER_KEY) {
+      
+      if (activeJobsForKey >= tierConfig.maxConcurrentJobs) {
         if (logger) {
-          logger.debug({ jobId, apiKeyId: job.apiKeyId }, 'Per-key concurrency limit reached, re-enqueuing');
+          logger.debug({ jobId, apiKeyId: job.apiKeyId, tier: usage.tier }, 'Per-key concurrency limit reached, re-enqueuing');
         }
         // At per-key capacity: release global slot and retry start via re-enqueue after delay
         releaseJob(jobId);

@@ -9,7 +9,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export async function provisionApiKey(input: {
   email: string;
   name: string;
-  tier: 'FREE' | 'PRO' | 'ENTERPRISE';
+  tier: 'FREE' | 'STARTER' | 'PRO';
   environment: ApiKeyEnvironment;
 }): Promise<{ rawKey: string }> {
   if (!input.email || !EMAIL_REGEX.test(input.email)) {

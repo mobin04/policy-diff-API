@@ -43,6 +43,21 @@ export class QuotaExceededError extends ApiError {
 }
 
 /**
+ * URL Limit Exceeded Error
+ * Thrown when an API key has reached its maximum allowed unique URLs.
+ *
+ * HTTP Status: 403 Forbidden
+ */
+export class UrlLimitExceededError extends ApiError {
+  readonly statusCode = 403;
+
+  constructor(message = 'Unique URL limit reached for your tier') {
+    super(message);
+    this.name = 'URL_LIMIT_EXCEEDED';
+  }
+}
+
+/**
  * Batch Limit Exceeded Error
  * Thrown when a batch submission exceeds the tier's maximum batch size.
  *
