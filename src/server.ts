@@ -4,10 +4,7 @@ import { DB } from './db';
 import { initializeJobService } from './services/monitorJob.service';
 import { getActiveJobCount } from './utils/concurrencyGuard';
 import { markAsInitialized } from './routes/health.route';
-import {
-  initReconciliation,
-  reconcileConcurrencyState,
-} from './services/concurrencyReconciliation.service';
+import { initReconciliation, reconcileConcurrencyState } from './services/concurrencyReconciliation.service';
 import { performBackup } from './services/backup.service';
 import cron from 'node-cron';
 
@@ -26,8 +23,14 @@ const start = async () => {
     // 2. Database readiness check (EXPLICIT migrations)
     try {
       await DB.query('SELECT 1 FROM applied_migrations LIMIT 1');
-    } catch (err) {
-      app.log.error('DATABASE_NOT_INITIALIZED: Run npm run migrate before starting server.');
+    } catch (err: any) {
+      // Differentiate between "Table missing" and "Connection failed"
+      if (err.code === '42P01') {
+        // 42P01 is PostgreSQL code for "undefined_table"
+        app.log.error('DATABASE_NOT_INITIALIZED: Run npm run migrate before starting server.');
+      } else {
+        app.log.error({ err }, 'DATABASE_CONNECTION_ERROR: Could not connect to database.');
+      }
       process.exit(1);
     }
 

@@ -1,11 +1,23 @@
-import { Pool } from 'pg';
+import { Pool, PoolConfig } from 'pg';
 import fs from 'fs';
 import path from 'path';
-import { DATABASE_URL } from '../config';
+import { DATABASE_URL, IS_PRODUCTION } from '../config';
 
-export const DB = new Pool({
+/**
+ * Database connection pool configuration.
+ * Uses SSL in production for Neon compatibility.
+ */
+const poolConfig: PoolConfig = {
   connectionString: DATABASE_URL,
-});
+};
+
+if (IS_PRODUCTION) {
+  poolConfig.ssl = {
+    rejectUnauthorized: false,
+  };
+}
+
+export const DB = new Pool(poolConfig);
 
 /**
  * Initialize database and run migrations.
@@ -36,11 +48,11 @@ export async function initDB() {
     for (const file of files) {
       // Check if migration already applied
       const check = await DB.query('SELECT 1 FROM applied_migrations WHERE file_name = $1', [file]);
-      
+
       if (check.rows.length === 0) {
         const migrationPath = path.join(migrationsDir, file);
         const migration = fs.readFileSync(migrationPath, 'utf8');
-        
+
         await DB.query('BEGIN');
         try {
           await DB.query(migration);
@@ -63,12 +75,10 @@ export async function areMigrationsPending(): Promise<boolean> {
   const migrationsDir = path.join(__dirname, 'migrations');
   if (!fs.existsSync(migrationsDir)) return false;
 
-  const files = fs
-    .readdirSync(migrationsDir)
-    .filter((f) => f.endsWith('.sql'));
+  const files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql'));
 
   const result = await DB.query<{ file_name: string }>('SELECT file_name FROM applied_migrations');
-  const appliedFiles = new Set(result.rows.map(r => r.file_name));
+  const appliedFiles = new Set(result.rows.map((r) => r.file_name));
 
-  return files.some(f => !appliedFiles.has(f));
+  return files.some((f) => !appliedFiles.has(f));
 }
