@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import fp from 'fastify-plugin';
-import { findApiKeyByRawKey, incrementMonthlyUsage } from '../repositories/apiKey.repository';
+import { findApiKeyByRawKey } from '../repositories/apiKey.repository';
 import { NODE_ENV } from '../config';
 import { AuthErrorResponse } from '../types';
 
@@ -86,14 +86,6 @@ async function apiKeyAuthHook(request: FastifyRequest, reply: FastifyReply): Pro
 
   if (!apiKey.isActive) {
     sendAuthError(reply, 403, 'Forbidden', 'API key has been deactivated');
-    return;
-  }
-
-  // Increment monthly usage atomically and check quota
-  const isUnderQuota = await incrementMonthlyUsage(apiKey.id);
-
-  if (!isUnderQuota) {
-    sendAuthError(reply, 403, 'Forbidden', 'Monthly usage limit reached');
     return;
   }
 

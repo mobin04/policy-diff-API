@@ -52,22 +52,6 @@ export async function findApiKeyByRawKey(rawKey: string): Promise<ApiKey | null>
 }
 
 /**
- * Increment monthly usage count for an API key securely (atomic).
- * Called after each successful authenticated request
- * Returns true if successfully incremented (under quota), false if out of quota.
- */
-export async function incrementMonthlyUsage(keyId: number): Promise<boolean> {
-  const result = await DB.query(
-    `UPDATE api_keys
-     SET monthly_usage = monthly_usage + 1
-     WHERE id = $1 AND monthly_usage < monthly_quota
-     RETURNING id`,
-    [keyId],
-  );
-  return result.rowCount !== null && result.rowCount > 0;
-}
-
-/**
  * Create a new API key record
  * Note: The raw key should be shown to the user ONCE before calling this
  *

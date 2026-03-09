@@ -48,6 +48,12 @@ describe('MonitorBatchService', () => {
       monthly_usage: 0,
       monthly_quota: 100
     });
+    (usageService.consumeJobsWithClient as jest.Mock).mockResolvedValue({
+      tier: 'FREE',
+      monthlyUsage: 2,
+      monthlyQuota: 100,
+      remaining: 98
+    });
     (apiKeyRepository.countDistinctUrlsForKey as jest.Mock).mockResolvedValue(0);
     (monitorBatchRepository.createBatch as jest.Mock).mockResolvedValue({ id: mockBatchId });
     (pageRepository.ensurePageExists as jest.Mock).mockResolvedValue(1);
