@@ -105,7 +105,10 @@ export async function findActiveByEmail(email: string): Promise<ApiKey | null> {
  * Count unique page_ids associated with an API key across all its monitor jobs.
  * This is used to enforce the tier-based maxUrls limit.
  */
-export async function countDistinctUrlsForKey(apiKeyId: number, client?: typeof DB | { query: typeof DB.query }): Promise<number> {
+export async function countDistinctUrlsForKey(
+  apiKeyId: number,
+  client?: typeof DB | { query: typeof DB.query },
+): Promise<number> {
   const db = client || DB;
   const result = await db.query<{ count: string }>(
     'SELECT COUNT(DISTINCT page_id) as count FROM monitor_jobs WHERE api_key_id = $1',
@@ -123,9 +126,6 @@ export async function insertProvisionedKey(
   input: CreateApiKeyInput,
   quotaResetAt: Date,
 ): Promise<ApiKey> {
-  // Map App 'prod' to DB 'live'
-  const dbEnv = input.environment === 'prod' ? 'live' : input.environment;
-
   const result = await DB.query<ApiKeyRow>(
     `INSERT INTO api_keys (
        key_hash, name, email, environment, tier,
@@ -134,7 +134,7 @@ export async function insertProvisionedKey(
      VALUES ($1, $2, $3, $4, $5, $6, 0, $7, TRUE)
      RETURNING id, key_hash, name, email, environment, is_active,
                created_at, tier, monthly_quota, monthly_usage, quota_reset_at`,
-    [keyHash, input.name, input.email, dbEnv, input.tier, input.monthlyQuota, quotaResetAt],
+    [keyHash, input.name, input.email, input.environment, input.tier, input.monthlyQuota, quotaResetAt],
   );
 
   return rowToApiKey(result.rows[0]);

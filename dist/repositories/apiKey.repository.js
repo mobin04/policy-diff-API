@@ -101,14 +101,12 @@ async function countDistinctUrlsForKey(apiKeyId, client) {
  * Note: Performs NO hashing or logic, only executes SQL.
  */
 async function insertProvisionedKey(keyHash, input, quotaResetAt) {
-    // Map App 'prod' to DB 'live'
-    const dbEnv = input.environment === 'prod' ? 'live' : input.environment;
     const result = await db_1.DB.query(`INSERT INTO api_keys (
        key_hash, name, email, environment, tier,
        monthly_quota, monthly_usage, quota_reset_at, is_active
      )
      VALUES ($1, $2, $3, $4, $5, $6, 0, $7, TRUE)
      RETURNING id, key_hash, name, email, environment, is_active,
-               created_at, tier, monthly_quota, monthly_usage, quota_reset_at`, [keyHash, input.name, input.email, dbEnv, input.tier, input.monthlyQuota, quotaResetAt]);
+               created_at, tier, monthly_quota, monthly_usage, quota_reset_at`, [keyHash, input.name, input.email, input.environment, input.tier, input.monthlyQuota, quotaResetAt]);
     return rowToApiKey(result.rows[0]);
 }
