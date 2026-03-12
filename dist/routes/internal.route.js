@@ -38,6 +38,13 @@ async function internalRoutes(fastify) {
         reply.send(metrics);
     });
     /**
+     * GET /v1/internal/user-status
+     *
+     * Protected by X-Provision-Secret header.
+     * Retrieves user metadata for stateless regeneration flow.
+     */
+    fastify.get('/internal/user-status', internal_controller_1.userStatusHandler);
+    /**
      * POST /v1/internal/provision
      *
      * Protected by X-Provision-Secret header.

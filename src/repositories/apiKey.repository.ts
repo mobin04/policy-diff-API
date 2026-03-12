@@ -85,13 +85,14 @@ export async function deactivateApiKey(keyId: number): Promise<void> {
 
 /**
  * Find an active API key by email
+ * Performs case-insensitive lookup
  */
 export async function findActiveByEmail(email: string): Promise<ApiKey | null> {
   const result = await DB.query<ApiKeyRow>(
     `SELECT id, key_hash, name, email, environment, is_active,
             created_at, rotated_at, tier, monthly_quota, monthly_usage, quota_reset_at
      FROM api_keys
-     WHERE email = $1 AND is_active = TRUE`,
+     WHERE LOWER(email) = LOWER($1) AND is_active = TRUE`,
     [email],
   );
 

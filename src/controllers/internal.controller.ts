@@ -1,5 +1,5 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { provisionApiKey, regenerateApiKey } from '../services/provisioning.service';
+import { provisionApiKey, regenerateApiKey, getUserStatus } from '../services/provisioning.service';
 import { validateSnapshotDeterminism } from '../services/replayValidator.service';
 import { captureReplaySnapshot } from '../services/replaySnapshot.service';
 import { PROVISION_SECRET } from '../config';
@@ -13,6 +13,52 @@ type ProvisionBody = {
   tier: 'FREE' | 'STARTER' | 'PRO';
   environment: 'dev' | 'prod';
 };
+
+/**
+ * GET /v1/internal/user-status?email=...
+ *
+ * Retrieves the current API key rotation timestamp for a user.
+ * Protected by X-Provision-Secret header.
+ */
+export async function userStatusHandler(
+  request: FastifyRequest<{ Querystring: { email: string } }>,
+  reply: FastifyReply,
+) {
+  const secret = request.headers['x-provision-secret'];
+
+  // Authentication check
+  if (!secret || secret !== PROVISION_SECRET) {
+    request.log.warn({ event: 'unauthorized_internal_access_attempt', ip: request.ip }, 'Unauthorized access attempt');
+    reply.status(401).send({ error: 'Unauthorized' });
+    return;
+  }
+
+  const { email } = request.query;
+
+  // Validate email presence and format
+  if (!email || !EMAIL_REGEX.test(email)) {
+    reply.status(400).send({ error: 'INVALID_EMAIL', message: 'Invalid email address provided' });
+    return;
+  }
+
+  try {
+    const status = await getUserStatus(email);
+
+    if (!status) {
+      reply.status(404).send({ error: 'User not found' });
+      return;
+    }
+
+    // Success response
+    return {
+      email: status.email,
+      last_rotated: status.rotatedAt ? status.rotatedAt.toISOString() : null,
+    };
+  } catch (err: unknown) {
+    request.log.error({ err, email }, 'Unexpected error in userStatusHandler');
+    reply.status(500).send({ error: 'Internal server error' });
+  }
+}
 
 export async function provisionHandler(request: FastifyRequest<{ Body: ProvisionBody }>, reply: FastifyReply) {
   const secret = request.headers['x-provision-secret'];

@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.userStatusHandler = userStatusHandler;
 exports.provisionHandler = provisionHandler;
 exports.regenerateKeyHandler = regenerateKeyHandler;
 exports.replayHandler = replayHandler;
@@ -10,6 +11,43 @@ const replaySnapshot_service_1 = require("../services/replaySnapshot.service");
 const config_1 = require("../config");
 const errors_1 = require("../errors");
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/**
+ * GET /v1/internal/user-status?email=...
+ *
+ * Retrieves the current API key rotation timestamp for a user.
+ * Protected by X-Provision-Secret header.
+ */
+async function userStatusHandler(request, reply) {
+    const secret = request.headers['x-provision-secret'];
+    // Authentication check
+    if (!secret || secret !== config_1.PROVISION_SECRET) {
+        request.log.warn({ event: 'unauthorized_internal_access_attempt', ip: request.ip }, 'Unauthorized access attempt');
+        reply.status(401).send({ error: 'Unauthorized' });
+        return;
+    }
+    const { email } = request.query;
+    // Validate email presence and format
+    if (!email || !EMAIL_REGEX.test(email)) {
+        reply.status(400).send({ error: 'INVALID_EMAIL', message: 'Invalid email address provided' });
+        return;
+    }
+    try {
+        const status = await (0, provisioning_service_1.getUserStatus)(email);
+        if (!status) {
+            reply.status(404).send({ error: 'User not found' });
+            return;
+        }
+        // Success response
+        return {
+            email: status.email,
+            last_rotated: status.rotatedAt ? status.rotatedAt.toISOString() : null,
+        };
+    }
+    catch (err) {
+        request.log.error({ err, email }, 'Unexpected error in userStatusHandler');
+        reply.status(500).send({ error: 'Internal server error' });
+    }
+}
 async function provisionHandler(request, reply) {
     const secret = request.headers['x-provision-secret'];
     if (!secret || secret !== config_1.PROVISION_SECRET) {

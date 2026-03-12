@@ -78,12 +78,13 @@ async function deactivateApiKey(keyId) {
 }
 /**
  * Find an active API key by email
+ * Performs case-insensitive lookup
  */
 async function findActiveByEmail(email) {
     const result = await db_1.DB.query(`SELECT id, key_hash, name, email, environment, is_active,
             created_at, rotated_at, tier, monthly_quota, monthly_usage, quota_reset_at
      FROM api_keys
-     WHERE email = $1 AND is_active = TRUE`, [email]);
+     WHERE LOWER(email) = LOWER($1) AND is_active = TRUE`, [email]);
     if (result.rows.length === 0) {
         return null;
     }

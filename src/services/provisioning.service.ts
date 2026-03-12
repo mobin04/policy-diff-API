@@ -61,3 +61,20 @@ export async function regenerateApiKey(email: string): Promise<{ rawKey: string;
 
   return { rawKey, rotatedAt };
 }
+
+/**
+ * Get the current status for a user (API key record)
+ * Used to retrieve rotation timestamps for stateless regeneration flows.
+ */
+export async function getUserStatus(email: string): Promise<{ email: string; rotatedAt: Date | null } | null> {
+  const existingKey = await findActiveByEmail(email);
+
+  if (!existingKey) {
+    return null;
+  }
+
+  return {
+    email: existingKey.email,
+    rotatedAt: existingKey.rotatedAt || null,
+  };
+}
