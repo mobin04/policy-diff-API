@@ -153,4 +153,38 @@ describe('ProvisioningService', () => {
             await expect((0, provisioning_service_1.provisionApiKey)(mockInput)).rejects.toThrow('INSERT_FAILED');
         });
     });
+    describe('regenerateApiKey', () => {
+        const mockEmail = 'existing@example.com';
+        const mockApiKeyRecord = {
+            id: 123,
+            email: mockEmail,
+            environment: 'prod',
+            isActive: true,
+        };
+        test('should regenerate API key for active email', async () => {
+            apiKeyRepository.findActiveByEmail.mockResolvedValue(mockApiKeyRecord);
+            apiKeyRepository.updateApiKeyHash.mockResolvedValue(undefined);
+            const result = await (0, provisioning_service_1.regenerateApiKey)(mockEmail);
+            expect(result.rawKey).toMatch(/^pd_live_[a-f0-9]{64}$/);
+            expect(apiKeyRepository.findActiveByEmail).toHaveBeenCalledWith(mockEmail);
+            const rawKey = result.rawKey;
+            const expectedHash = crypto_1.default.createHash('sha256').update(rawKey).digest('hex');
+            expect(apiKeyRepository.updateApiKeyHash).toHaveBeenCalledWith(mockApiKeyRecord.id, expectedHash);
+        });
+        test('should use dev prefix if original key was dev', async () => {
+            apiKeyRepository.findActiveByEmail.mockResolvedValue({
+                ...mockApiKeyRecord,
+                environment: 'dev',
+            });
+            const result = await (0, provisioning_service_1.regenerateApiKey)(mockEmail);
+            expect(result.rawKey).toMatch(/^pd_dev_/);
+        });
+        test('should throw error if email not found', async () => {
+            apiKeyRepository.findActiveByEmail.mockResolvedValue(null);
+            await expect((0, provisioning_service_1.regenerateApiKey)(mockEmail)).rejects.toThrow('API_KEY_NOT_FOUND');
+        });
+        test('should throw InvalidEmailError for malformed email', async () => {
+            await expect((0, provisioning_service_1.regenerateApiKey)('not-an-email')).rejects.toThrow(errors_1.InvalidEmailError);
+        });
+    });
 });

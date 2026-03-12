@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.provisionHandler = provisionHandler;
+exports.regenerateKeyHandler = regenerateKeyHandler;
 exports.replayHandler = replayHandler;
 exports.createSnapshotController = createSnapshotController;
 const provisioning_service_1 = require("../services/provisioning.service");
@@ -42,6 +43,34 @@ async function provisionHandler(request, reply) {
         apiKey: rawKey,
         warning: 'Store this key securely. It will not be shown again.',
     };
+}
+async function regenerateKeyHandler(request, reply) {
+    const secret = request.headers['x-provision-secret'];
+    if (!secret || secret !== config_1.PROVISION_SECRET) {
+        throw new errors_1.ProvisionSecretInvalidError();
+    }
+    const { email } = request.body;
+    if (!email || !EMAIL_REGEX.test(email)) {
+        throw new errors_1.InvalidEmailError();
+    }
+    try {
+        const { rawKey } = await (0, provisioning_service_1.regenerateApiKey)(email);
+        request.log.info({
+            event: 'api_key_regenerated',
+            email,
+        });
+        return {
+            apiKey: rawKey,
+            warning: 'Store this key securely. It will not be shown again.',
+        };
+    }
+    catch (err) {
+        if (err instanceof Error && err.message === 'API_KEY_NOT_FOUND') {
+            reply.status(404).send({ error: 'NotFound', message: 'Active API key not found for this email' });
+            return;
+        }
+        throw err;
+    }
 }
 async function replayHandler(request, reply) {
     const { snapshotId } = request.params;

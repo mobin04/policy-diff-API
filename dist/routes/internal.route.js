@@ -45,6 +45,13 @@ async function internalRoutes(fastify) {
      */
     fastify.post('/internal/provision', internal_controller_1.provisionHandler);
     /**
+     * POST /v1/internal/regenerate-key
+     *
+     * Protected by X-Provision-Secret header.
+     * Regenerates an existing API key.
+     */
+    fastify.post('/internal/regenerate-key', internal_controller_1.regenerateKeyHandler);
+    /**
      * POST /v1/internal/replay/:snapshotId
      *
      * Protected by X-Internal-Token header.

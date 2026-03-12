@@ -5,6 +5,7 @@ exports.findApiKeyByRawKey = findApiKeyByRawKey;
 exports.createApiKey = createApiKey;
 exports.deactivateApiKey = deactivateApiKey;
 exports.findActiveByEmail = findActiveByEmail;
+exports.updateApiKeyHash = updateApiKeyHash;
 exports.countDistinctUrlsForKey = countDistinctUrlsForKey;
 exports.insertProvisionedKey = insertProvisionedKey;
 const db_1 = require("../db");
@@ -22,6 +23,7 @@ function rowToApiKey(row) {
         environment: row.environment === 'live' ? 'prod' : row.environment,
         isActive: row.is_active,
         createdAt: row.created_at,
+        rotatedAt: row.rotated_at,
         tier: row.tier,
         monthlyQuota: row.monthly_quota,
         monthlyUsage: row.monthly_usage,
@@ -34,7 +36,7 @@ function rowToApiKey(row) {
  */
 async function findApiKeyByHash(keyHash) {
     const result = await db_1.DB.query(`SELECT id, key_hash, name, email, environment, is_active,
-            created_at, tier, monthly_quota, monthly_usage, quota_reset_at
+            created_at, rotated_at, tier, monthly_quota, monthly_usage, quota_reset_at
      FROM api_keys
      WHERE key_hash = $1`, [keyHash]);
     if (result.rows.length === 0) {
@@ -79,7 +81,7 @@ async function deactivateApiKey(keyId) {
  */
 async function findActiveByEmail(email) {
     const result = await db_1.DB.query(`SELECT id, key_hash, name, email, environment, is_active,
-            created_at, tier, monthly_quota, monthly_usage, quota_reset_at
+            created_at, rotated_at, tier, monthly_quota, monthly_usage, quota_reset_at
      FROM api_keys
      WHERE email = $1 AND is_active = TRUE`, [email]);
     if (result.rows.length === 0) {
@@ -88,8 +90,15 @@ async function findActiveByEmail(email) {
     return rowToApiKey(result.rows[0]);
 }
 /**
+ * Update the key hash for an existing record (regeneration)
+ */
+async function updateApiKeyHash(apiKeyId, newHash) {
+    await db_1.DB.query(`UPDATE api_keys
+     SET key_hash = $2, rotated_at = NOW()
+     WHERE id = $1`, [apiKeyId, newHash]);
+}
+/**
  * Count unique page_ids associated with an API key across all its monitor jobs.
- * This is used to enforce the tier-based maxUrls limit.
  */
 async function countDistinctUrlsForKey(apiKeyId, client) {
     const db = client || db_1.DB;
@@ -107,6 +116,6 @@ async function insertProvisionedKey(keyHash, input, quotaResetAt) {
      )
      VALUES ($1, $2, $3, $4, $5, $6, 0, $7, TRUE)
      RETURNING id, key_hash, name, email, environment, is_active,
-               created_at, tier, monthly_quota, monthly_usage, quota_reset_at`, [keyHash, input.name, input.email, input.environment, input.tier, input.monthlyQuota, quotaResetAt]);
+               created_at, rotated_at, tier, monthly_quota, monthly_usage, quota_reset_at`, [keyHash, input.name, input.email, input.environment, input.tier, input.monthlyQuota, quotaResetAt]);
     return rowToApiKey(result.rows[0]);
 }
