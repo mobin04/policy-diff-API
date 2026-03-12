@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { findActiveByEmail, insertProvisionedKey } from '../repositories/apiKey.repository';
+import { findActiveByEmail, insertProvisionedKey, updateApiKeyHash } from '../repositories/apiKey.repository';
 import { getTierConfig } from '../config/tierConfig';
 import { ApiKeyEnvironment, CreateApiKeyInput } from '../types';
 import { ApiKeyAlreadyExistsError, InvalidEmailError } from '../errors';
@@ -37,6 +37,27 @@ export async function provisionApiKey(input: {
   };
 
   await insertProvisionedKey(keyHash, dbInput, quotaResetAt);
+
+  return { rawKey };
+}
+
+export async function regenerateApiKey(email: string): Promise<{ rawKey: string }> {
+  if (!email || !EMAIL_REGEX.test(email)) {
+    throw new InvalidEmailError();
+  }
+
+  const existingKey = await findActiveByEmail(email);
+  if (!existingKey) {
+    throw new Error('API_KEY_NOT_FOUND');
+  }
+
+  const rawBytes = crypto.randomBytes(32).toString('hex');
+  const prefix = existingKey.environment === 'dev' ? 'pd_dev_' : 'pd_live_';
+  const rawKey = `${prefix}${rawBytes}`;
+
+  const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
+
+  await updateApiKeyHash(existingKey.id, keyHash);
 
   return { rawKey };
 }

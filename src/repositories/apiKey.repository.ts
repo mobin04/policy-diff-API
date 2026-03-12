@@ -15,6 +15,7 @@ function rowToApiKey(row: ApiKeyRow): ApiKey {
     environment: (row.environment as string) === 'live' ? 'prod' : (row.environment as ApiKeyEnvironment),
     isActive: row.is_active,
     createdAt: row.created_at,
+    rotatedAt: row.rotated_at,
     tier: row.tier,
     monthlyQuota: row.monthly_quota,
     monthlyUsage: row.monthly_usage,
@@ -29,7 +30,7 @@ function rowToApiKey(row: ApiKeyRow): ApiKey {
 export async function findApiKeyByHash(keyHash: string): Promise<ApiKey | null> {
   const result = await DB.query<ApiKeyRow>(
     `SELECT id, key_hash, name, email, environment, is_active,
-            created_at, tier, monthly_quota, monthly_usage, quota_reset_at
+            created_at, rotated_at, tier, monthly_quota, monthly_usage, quota_reset_at
      FROM api_keys
      WHERE key_hash = $1`,
     [keyHash],
@@ -88,7 +89,7 @@ export async function deactivateApiKey(keyId: number): Promise<void> {
 export async function findActiveByEmail(email: string): Promise<ApiKey | null> {
   const result = await DB.query<ApiKeyRow>(
     `SELECT id, key_hash, name, email, environment, is_active,
-            created_at, tier, monthly_quota, monthly_usage, quota_reset_at
+            created_at, rotated_at, tier, monthly_quota, monthly_usage, quota_reset_at
      FROM api_keys
      WHERE email = $1 AND is_active = TRUE`,
     [email],
@@ -102,8 +103,19 @@ export async function findActiveByEmail(email: string): Promise<ApiKey | null> {
 }
 
 /**
+ * Update the key hash for an existing record (regeneration)
+ */
+export async function updateApiKeyHash(apiKeyId: number, newHash: string): Promise<void> {
+  await DB.query(
+    `UPDATE api_keys
+     SET key_hash = $2, rotated_at = NOW()
+     WHERE id = $1`,
+    [apiKeyId, newHash],
+  );
+}
+
+/**
  * Count unique page_ids associated with an API key across all its monitor jobs.
- * This is used to enforce the tier-based maxUrls limit.
  */
 export async function countDistinctUrlsForKey(
   apiKeyId: number,
@@ -133,7 +145,7 @@ export async function insertProvisionedKey(
      )
      VALUES ($1, $2, $3, $4, $5, $6, 0, $7, TRUE)
      RETURNING id, key_hash, name, email, environment, is_active,
-               created_at, tier, monthly_quota, monthly_usage, quota_reset_at`,
+               created_at, rotated_at, tier, monthly_quota, monthly_usage, quota_reset_at`,
     [keyHash, input.name, input.email, input.environment, input.tier, input.monthlyQuota, quotaResetAt],
   );
 

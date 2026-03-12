@@ -460,6 +460,34 @@ Requires `X-Provision-Secret: <token>` configured by the `PROVISION_SECRET` env 
 - Returns the key ONCE.
 - Tiers: `FREE`, `STARTER`, `PRO`. Default is `FREE`.
 
+### `POST /v1/internal/regenerate-key`
+
+Endpoint to regenerate an existing API key without creating a new record. This preserves usage history, quotas, and monitoring data.
+
+**X-Provision-Secret Header:**
+Requires `X-Provision-Secret: <token>`.
+
+**Example Request:**
+
+```json
+{
+  "email": "user@example.com"
+}
+```
+
+**Example Response (200 OK):**
+
+```json
+{
+  "apiKey": "pd_live_new_key_...",
+  "warning": "Store this key securely. It will not be shown again."
+}
+```
+
+- Finds the active key by email and replaces its hash.
+- Sets the `rotated_at` timestamp.
+- Returns the new raw key ONCE.
+
 **Error Contract:**
 
 All API errors follow a standard format.
