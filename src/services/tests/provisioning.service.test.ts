@@ -1,4 +1,4 @@
-import { provisionApiKey } from '../provisioning.service';
+import { provisionApiKey, regenerateApiKey } from '../provisioning.service';
 import * as apiKeyRepository from '../../repositories/apiKey.repository';
 import { InvalidEmailError, ApiKeyAlreadyExistsError } from '../../errors';
 import crypto from 'crypto';
@@ -150,6 +150,50 @@ describe('ProvisioningService', () => {
       (apiKeyRepository.insertProvisionedKey as jest.Mock).mockRejectedValue(new Error('INSERT_FAILED'));
 
       await expect(provisionApiKey(mockInput)).rejects.toThrow('INSERT_FAILED');
+    });
+  });
+
+  describe('regenerateApiKey', () => {
+    const mockEmail = 'existing@example.com';
+    const mockApiKeyRecord = {
+      id: 123,
+      email: mockEmail,
+      environment: 'prod',
+      isActive: true,
+    };
+
+    test('should regenerate API key for active email', async () => {
+      (apiKeyRepository.findActiveByEmail as jest.Mock).mockResolvedValue(mockApiKeyRecord);
+      (apiKeyRepository.updateApiKeyHash as jest.Mock).mockResolvedValue(undefined);
+
+      const result = await regenerateApiKey(mockEmail);
+
+      expect(result.rawKey).toMatch(/^pd_live_[a-f0-9]{64}$/);
+      expect(apiKeyRepository.findActiveByEmail).toHaveBeenCalledWith(mockEmail);
+      
+      const rawKey = result.rawKey;
+      const expectedHash = crypto.createHash('sha256').update(rawKey).digest('hex');
+      expect(apiKeyRepository.updateApiKeyHash).toHaveBeenCalledWith(mockApiKeyRecord.id, expectedHash);
+    });
+
+    test('should use dev prefix if original key was dev', async () => {
+      (apiKeyRepository.findActiveByEmail as jest.Mock).mockResolvedValue({
+        ...mockApiKeyRecord,
+        environment: 'dev',
+      });
+
+      const result = await regenerateApiKey(mockEmail);
+      expect(result.rawKey).toMatch(/^pd_dev_/);
+    });
+
+    test('should throw error if email not found', async () => {
+      (apiKeyRepository.findActiveByEmail as jest.Mock).mockResolvedValue(null);
+
+      await expect(regenerateApiKey(mockEmail)).rejects.toThrow('API_KEY_NOT_FOUND');
+    });
+
+    test('should throw InvalidEmailError for malformed email', async () => {
+      await expect(regenerateApiKey('not-an-email')).rejects.toThrow(InvalidEmailError);
     });
   });
 });

@@ -1,5 +1,5 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { provisionApiKey } from '../services/provisioning.service';
+import { provisionApiKey, regenerateApiKey } from '../services/provisioning.service';
 import { validateSnapshotDeterminism } from '../services/replayValidator.service';
 import { captureReplaySnapshot } from '../services/replaySnapshot.service';
 import { PROVISION_SECRET } from '../config';
@@ -54,6 +54,39 @@ export async function provisionHandler(request: FastifyRequest<{ Body: Provision
     apiKey: rawKey,
     warning: 'Store this key securely. It will not be shown again.',
   };
+}
+
+export async function regenerateKeyHandler(request: FastifyRequest<{ Body: { email: string } }>, reply: FastifyReply) {
+  const secret = request.headers['x-provision-secret'];
+  if (!secret || secret !== PROVISION_SECRET) {
+    throw new ProvisionSecretInvalidError();
+  }
+
+  const { email } = request.body;
+
+  if (!email || !EMAIL_REGEX.test(email)) {
+    throw new InvalidEmailError();
+  }
+
+  try {
+    const { rawKey } = await regenerateApiKey(email);
+
+    request.log.info({
+      event: 'api_key_regenerated',
+      email,
+    });
+
+    return {
+      apiKey: rawKey,
+      warning: 'Store this key securely. It will not be shown again.',
+    };
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message === 'API_KEY_NOT_FOUND') {
+      reply.status(404).send({ error: 'NotFound', message: 'Active API key not found for this email' });
+      return;
+    }
+    throw err;
+  }
 }
 
 export async function replayHandler(request: FastifyRequest<{ Params: { snapshotId: string } }>, reply: FastifyReply) {

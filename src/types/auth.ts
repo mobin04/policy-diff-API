@@ -12,6 +12,7 @@ export type ApiKey = {
   environment: ApiKeyEnvironment;
   isActive: boolean;
   createdAt: Date;
+  rotatedAt?: Date;
   tier: 'FREE' | 'STARTER' | 'PRO';
   monthlyQuota: number;
   monthlyUsage: number;
@@ -26,6 +27,7 @@ export type ApiKeyRow = {
   environment: ApiKeyEnvironment;
   is_active: boolean;
   created_at: Date;
+  rotated_at?: Date;
   tier: 'FREE' | 'STARTER' | 'PRO';
   monthly_quota: number;
   monthly_usage: number;

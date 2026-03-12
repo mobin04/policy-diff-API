@@ -1,7 +1,12 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { getInternalMetrics } from '../repositories/metrics.repository';
 import { INTERNAL_METRICS_TOKEN } from '../config';
-import { provisionHandler, replayHandler, createSnapshotController } from '../controllers/internal.controller';
+import {
+  provisionHandler,
+  regenerateKeyHandler,
+  replayHandler,
+  createSnapshotController,
+} from '../controllers/internal.controller';
 import { recordAbuseEvent } from '../services/requestAbuse.service';
 
 /**
@@ -13,7 +18,7 @@ async function validateInternalToken(request: FastifyRequest, reply: FastifyRepl
   if (!token || token !== INTERNAL_METRICS_TOKEN) {
     request.log.warn({ request_ip: request.ip }, 'INVALID_INTERNAL_TOKEN_ATTEMPT');
     await recordAbuseEvent('INVALID_INTERNAL_TOKEN_ATTEMPT', null, request.ip);
-    
+
     reply.code(401).send({
       error: 'Unauthorized',
       message: 'Invalid or missing internal token',
@@ -47,6 +52,14 @@ export async function internalRoutes(fastify: FastifyInstance) {
    * Provisions a new API key.
    */
   fastify.post('/internal/provision', provisionHandler);
+
+  /**
+   * POST /v1/internal/regenerate-key
+   *
+   * Protected by X-Provision-Secret header.
+   * Regenerates an existing API key.
+   */
+  fastify.post('/internal/regenerate-key', regenerateKeyHandler);
 
   /**
    * POST /v1/internal/replay/:snapshotId
