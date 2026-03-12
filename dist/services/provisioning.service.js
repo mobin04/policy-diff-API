@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.provisionApiKey = provisionApiKey;
 exports.regenerateApiKey = regenerateApiKey;
+exports.getUserStatus = getUserStatus;
 const crypto_1 = __importDefault(require("crypto"));
 const apiKey_repository_1 = require("../repositories/apiKey.repository");
 const tierConfig_1 = require("../config/tierConfig");
@@ -46,4 +47,18 @@ async function regenerateApiKey(email) {
     const keyHash = crypto_1.default.createHash('sha256').update(rawKey).digest('hex');
     const rotatedAt = await (0, apiKey_repository_1.updateApiKeyHash)(existingKey.id, keyHash);
     return { rawKey, rotatedAt };
+}
+/**
+ * Get the current status for a user (API key record)
+ * Used to retrieve rotation timestamps for stateless regeneration flows.
+ */
+async function getUserStatus(email) {
+    const existingKey = await (0, apiKey_repository_1.findActiveByEmail)(email);
+    if (!existingKey) {
+        return null;
+    }
+    return {
+        email: existingKey.email,
+        rotatedAt: existingKey.rotatedAt || null,
+    };
 }
