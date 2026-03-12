@@ -44,6 +44,6 @@ async function regenerateApiKey(email) {
     const prefix = existingKey.environment === 'dev' ? 'pd_dev_' : 'pd_live_';
     const rawKey = `${prefix}${rawBytes}`;
     const keyHash = crypto_1.default.createHash('sha256').update(rawKey).digest('hex');
-    await (0, apiKey_repository_1.updateApiKeyHash)(existingKey.id, keyHash);
-    return { rawKey };
+    const rotatedAt = await (0, apiKey_repository_1.updateApiKeyHash)(existingKey.id, keyHash);
+    return { rawKey, rotatedAt };
 }

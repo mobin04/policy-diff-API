@@ -93,9 +93,11 @@ async function findActiveByEmail(email) {
  * Update the key hash for an existing record (regeneration)
  */
 async function updateApiKeyHash(apiKeyId, newHash) {
-    await db_1.DB.query(`UPDATE api_keys
+    const result = await db_1.DB.query(`UPDATE api_keys
      SET key_hash = $2, rotated_at = NOW()
-     WHERE id = $1`, [apiKeyId, newHash]);
+     WHERE id = $1
+     RETURNING rotated_at`, [apiKeyId, newHash]);
+    return result.rows[0].rotated_at;
 }
 /**
  * Count unique page_ids associated with an API key across all its monitor jobs.

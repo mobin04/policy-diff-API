@@ -41,7 +41,7 @@ export async function provisionApiKey(input: {
   return { rawKey };
 }
 
-export async function regenerateApiKey(email: string): Promise<{ rawKey: string }> {
+export async function regenerateApiKey(email: string): Promise<{ rawKey: string; rotatedAt: Date }> {
   if (!email || !EMAIL_REGEX.test(email)) {
     throw new InvalidEmailError();
   }
@@ -57,7 +57,7 @@ export async function regenerateApiKey(email: string): Promise<{ rawKey: string 
 
   const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
 
-  await updateApiKeyHash(existingKey.id, keyHash);
+  const rotatedAt = await updateApiKeyHash(existingKey.id, keyHash);
 
-  return { rawKey };
+  return { rawKey, rotatedAt };
 }

@@ -54,13 +54,14 @@ async function regenerateKeyHandler(request, reply) {
         throw new errors_1.InvalidEmailError();
     }
     try {
-        const { rawKey } = await (0, provisioning_service_1.regenerateApiKey)(email);
+        const { rawKey, rotatedAt } = await (0, provisioning_service_1.regenerateApiKey)(email);
         request.log.info({
             event: 'api_key_regenerated',
             email,
         });
         return {
             apiKey: rawKey,
+            last_rotated: rotatedAt.toISOString(),
             warning: 'Store this key securely. It will not be shown again.',
         };
     }

@@ -480,6 +480,7 @@ Requires `X-Provision-Secret: <token>`.
 ```json
 {
   "apiKey": "pd_live_new_key_...",
+  "last_rotated": "2026-03-05T12:00:00.000Z",
   "warning": "Store this key securely. It will not be shown again."
 }
 ```

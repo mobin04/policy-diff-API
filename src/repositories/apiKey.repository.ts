@@ -105,13 +105,15 @@ export async function findActiveByEmail(email: string): Promise<ApiKey | null> {
 /**
  * Update the key hash for an existing record (regeneration)
  */
-export async function updateApiKeyHash(apiKeyId: number, newHash: string): Promise<void> {
-  await DB.query(
+export async function updateApiKeyHash(apiKeyId: number, newHash: string): Promise<Date> {
+  const result = await DB.query<{ rotated_at: Date }>(
     `UPDATE api_keys
      SET key_hash = $2, rotated_at = NOW()
-     WHERE id = $1`,
+     WHERE id = $1
+     RETURNING rotated_at`,
     [apiKeyId, newHash],
   );
+  return result.rows[0].rotated_at;
 }
 
 /**

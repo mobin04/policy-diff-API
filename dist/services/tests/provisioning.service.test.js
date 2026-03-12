@@ -162,10 +162,12 @@ describe('ProvisioningService', () => {
             isActive: true,
         };
         test('should regenerate API key for active email', async () => {
+            const mockRotatedAt = new Date();
             apiKeyRepository.findActiveByEmail.mockResolvedValue(mockApiKeyRecord);
-            apiKeyRepository.updateApiKeyHash.mockResolvedValue(undefined);
+            apiKeyRepository.updateApiKeyHash.mockResolvedValue(mockRotatedAt);
             const result = await (0, provisioning_service_1.regenerateApiKey)(mockEmail);
             expect(result.rawKey).toMatch(/^pd_live_[a-f0-9]{64}$/);
+            expect(result.rotatedAt).toBe(mockRotatedAt);
             expect(apiKeyRepository.findActiveByEmail).toHaveBeenCalledWith(mockEmail);
             const rawKey = result.rawKey;
             const expectedHash = crypto_1.default.createHash('sha256').update(rawKey).digest('hex');

@@ -69,7 +69,7 @@ export async function regenerateKeyHandler(request: FastifyRequest<{ Body: { ema
   }
 
   try {
-    const { rawKey } = await regenerateApiKey(email);
+    const { rawKey, rotatedAt } = await regenerateApiKey(email);
 
     request.log.info({
       event: 'api_key_regenerated',
@@ -78,6 +78,7 @@ export async function regenerateKeyHandler(request: FastifyRequest<{ Body: { ema
 
     return {
       apiKey: rawKey,
+      last_rotated: rotatedAt.toISOString(),
       warning: 'Store this key securely. It will not be shown again.',
     };
   } catch (err: unknown) {

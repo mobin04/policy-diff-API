@@ -163,12 +163,14 @@ describe('ProvisioningService', () => {
     };
 
     test('should regenerate API key for active email', async () => {
+      const mockRotatedAt = new Date();
       (apiKeyRepository.findActiveByEmail as jest.Mock).mockResolvedValue(mockApiKeyRecord);
-      (apiKeyRepository.updateApiKeyHash as jest.Mock).mockResolvedValue(undefined);
+      (apiKeyRepository.updateApiKeyHash as jest.Mock).mockResolvedValue(mockRotatedAt);
 
       const result = await regenerateApiKey(mockEmail);
 
       expect(result.rawKey).toMatch(/^pd_live_[a-f0-9]{64}$/);
+      expect(result.rotatedAt).toBe(mockRotatedAt);
       expect(apiKeyRepository.findActiveByEmail).toHaveBeenCalledWith(mockEmail);
       
       const rawKey = result.rawKey;
