@@ -6,6 +6,7 @@ import {
   regenerateKeyHandler,
   replayHandler,
   createSnapshotController,
+  userStatusHandler,
 } from '../controllers/internal.controller';
 import { recordAbuseEvent } from '../services/requestAbuse.service';
 
@@ -44,6 +45,14 @@ export async function internalRoutes(fastify: FastifyInstance) {
     const metrics = await getInternalMetrics();
     reply.send(metrics);
   });
+
+  /**
+   * GET /v1/internal/user-status
+   *
+   * Protected by X-Provision-Secret header.
+   * Retrieves user metadata for stateless regeneration flow.
+   */
+  fastify.get('/internal/user-status', userStatusHandler);
 
   /**
    * POST /v1/internal/provision
