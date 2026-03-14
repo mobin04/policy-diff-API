@@ -32,12 +32,8 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.fetchPage = fetchPage;
-const axios_1 = __importDefault(require("axios"));
 const cheerio = __importStar(require("cheerio"));
 const errors_1 = require("../errors");
 /**
@@ -49,62 +45,69 @@ const errors_1 = require("../errors");
  */
 async function fetchPage(url, signal) {
     try {
-        const res = await axios_1.default.get(url, {
-            timeout: 10000, // 10 second timeout
+        // Dynamic import to support ESM-only got-scraping in CJS project
+        // We use eval('import(...)') to prevent TS/Webpack from transforming it to require()
+        const { gotScraping } = await eval('import("got-scraping")');
+        const response = await gotScraping.get(url, {
+            timeout: { request: 10000 },
             maxRedirects: 5,
             signal,
-            headers: {
-                'User-Agent': 'PolicyDiffBot/1.0 (+https://yourdomain.com)',
-                Accept: 'text/html,application/xhtml+xml',
-                'Accept-Language': 'en-US,en;q=0.9',
-                Connection: 'keep-alive',
+            headerGeneratorOptions: {
+                browsers: [
+                    { name: 'chrome' },
+                    { name: 'firefox' },
+                    { name: 'safari' },
+                ],
+                devices: ['desktop'],
+                locales: ['en-US'],
             },
-            // Ensure we get string data
-            responseType: 'text',
+            retry: { limit: 0 },
         });
-        const html = res.data;
+        const html = response.body;
         // Validate fetched content before returning
         validateFetchedContent(html);
         return html;
     }
     catch (error) {
-        // Handle Axios errors specifically
-        if (axios_1.default.isAxiosError(error)) {
-            const axiosError = error;
-            // HTTP error response (4xx, 5xx)
-            if (axiosError.response) {
-                const status = axiosError.response.status;
-                // Specialized handling for blocking
-                if (status === 403 || status === 429) {
-                    // console.log('something gonna wrong');
-                    throw new errors_1.PageAccessBlockedError();
-                }
+        // Cast to access properties since we're dealing with dynamic imports and unknown types
+        const err = error;
+        // Handle HTTP errors (4xx, 5xx)
+        // We check the name because instanceof might fail across dynamic imports in some environments
+        if (err.name === 'HTTPError') {
+            const status = err.response?.statusCode;
+            // Specialized handling for blocking
+            if (status === 403 || status === 429) {
+                throw new errors_1.PageAccessBlockedError();
+            }
+            if (status) {
                 throw new errors_1.HttpError(`Target URL returned ${status}`, status);
             }
-            // Request made but no response received (timeout, DNS, network)
-            if (axiosError.request) {
-                // Categorize the error based on code
-                const code = axiosError.code;
-                if (code === 'ECONNABORTED' || code === 'ETIMEDOUT') {
-                    throw new errors_1.FetchError('Request timed out', 'timeout');
-                }
-                if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') {
-                    throw new errors_1.FetchError('Domain not found (DNS failure)', 'dns');
-                }
-                if (code === 'ECONNREFUSED') {
-                    throw new errors_1.FetchError('Connection refused by server', 'connection');
-                }
-                if (code === 'ECONNRESET') {
-                    throw new errors_1.FetchError('Connection reset by server', 'connection');
-                }
-                // Generic network error
-                throw new errors_1.FetchError('Unable to reach target URL', code || 'unknown');
-            }
-            // Error setting up request
-            throw new errors_1.FetchError(`Request failed: ${axiosError.message}`, 'request');
         }
-        // Non-Axios error (should not happen, but handle gracefully)
-        throw new errors_1.FetchError('Unexpected error during fetch', 'unknown');
+        // Handle Request errors (timeout, DNS, network)
+        if (err.name === 'RequestError') {
+            const code = err.code;
+            if (code === 'ETIMEDOUT') {
+                throw new errors_1.FetchError('Request timed out', 'timeout');
+            }
+            if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') {
+                throw new errors_1.FetchError('Domain not found (DNS failure)', 'dns');
+            }
+            if (code === 'ECONNREFUSED') {
+                throw new errors_1.FetchError('Connection refused by server', 'connection');
+            }
+            if (code === 'ECONNRESET') {
+                throw new errors_1.FetchError('Connection reset by server', 'connection');
+            }
+            // Generic network error
+            throw new errors_1.FetchError(`Unable to reach target URL: ${err.message}`, code || 'unknown');
+        }
+        // Pass through already classified API errors (they have statusCode but aren't FetchError/HttpError)
+        if (err.statusCode && (error instanceof Error || err.name)) {
+            throw error;
+        }
+        // Unexpected error
+        const message = err.message || 'Unknown error during fetch';
+        throw new errors_1.FetchError(`Unexpected error during fetch: ${message}`, 'unknown');
     }
 }
 /**

@@ -44,8 +44,9 @@
     "fast-levenshtein": "^3.0.0",
     "fastify": "^5.7.4",
     "fastify-plugin": "^5.1.0",
+    "got-scraping": "^4.2.1",
+    "node-cron": "^3.0.3",
     "pg": "^8.18.0",
-    "pino-roll": "^1.1.0",
-    "node-cron": "^3.0.3"
+    "pino-roll": "^1.1.0"
   }
 }
