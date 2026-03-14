@@ -120,3 +120,6 @@ out
 .vscode/
 *.swp
 *.swo
+
+# Gemini AI configuration
+.gemini/
