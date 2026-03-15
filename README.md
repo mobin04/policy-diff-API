@@ -1,133 +1,274 @@
 # PolicyDiff API
 
-PolicyDiff is a deterministic compliance engine for monitoring structural and substantive changes in legal documents. It provides automated detection of section-level modifications using rule-based risk classification and strict content normalization.
+[![Node Version](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](https://nodejs.org/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-## Table of Contents
+**Detect when companies silently change their privacy policies, terms, or pricing pages.**
 
-1. [Core Design](#1-core-design)
-2. [Architecture](#2-architecture)
-3. [Normalization & Extraction](#3-normalization--extraction)
-4. [Risk Engine](#4-risk-engine)
-5. [Job & Concurrency Control](#5-job--concurrency-control)
-6. [Quotas & Limits](#6-quotas--limits)
-7. [API Reference](#7-api-reference)
-8. [Observability & Security](#8-observability--security)
-9. [Setup & Operations](#9-setup--operations)
-10. [License](#10-license)
+PolicyDiff is a deterministic compliance engine that identifies meaningful structural and semantic changes in legal documents. It ignores formatting noise and focuses on shifts in legal intent, such as data sharing permissions and liability updates.
 
-## 1. Core Design
+---
 
-- **Determinism**: Identical inputs always yield identical outputs. The system avoids all probabilistic logic or AI-based modeling.
-- **O(1) Hash Comparison**: Employs SHA-256 section-level hashing to detect modifications without expensive string comparisons.
-- **Single-Instance Isolation**: Designed for high-reliability single-node deployments with deterministic in-memory concurrency guards.
-- **Stateless Analysis**: Content is analyzed in isolation from external state during the diff phase to ensure auditability.
-- **Type Safety**: Built with strict TypeScript to enforce contract integrity across all layers.
+## Use It in 10 Seconds
 
-## 2. Architecture
+The fastest way to analyze a policy for high-risk changes:
 
-The system implements a strict layered architecture:
-`Route (Fastify) → Controller (Orchestration) → Service (Logic) → Repository (Persistence) → Database (PostgreSQL)`
-
-### The Pipeline Lifecycle
-1. **Fetch**: Network retrieval of HTML content with realistic browser headers and redirect handling.
-2. **Normalize**: Transformation of unstable DOM structures (tables, lists) into stable canonical text.
-3. **Isolate**: Extraction of the primary content container (e.g., `<main>`) using a prioritized selector matrix.
-4. **Parse**: Hierarchy-based sectioning using `<h1>`, `<h2>`, and `<h3>` tags as delimiters.
-5. **Hash**: SHA-256 generation for content blocks after temporal noise masking.
-6. **Diff**: Multi-pass delta calculation (Exact Match → Fuzzy Match → Rename Detection).
-7. **Classify**: Deterministic risk scoring based on proximity clustering and negation-aware root matching.
-
-## 3. Normalization & Extraction
-
-### Structural Normalization
-DOM elements that produce unstable diff noise are converted to stable formats before hashing:
-- **Tables**: Converted to pipe-separated Markdown rows.
-- **Lists**: Converted to canonical Markdown-like lists with consistent indentation.
-- **Temporal Masking**: Dates within proximity (5 words) of keywords (e.g., "revised", "effective") are replaced with `__DATE_TOKEN__`.
-- **Numeric Normalization**: Normalizes thousands-separators, currency symbols, and percentages to focus on numeric value changes.
-
-### Content Isolation
-The engine removes global noise (navigation, footers, scripts) and isolates the primary policy container:
-- Priority: `<main>` → `<article>` → `[role="main"]` → `#content` → `#main`.
-- Minimum text threshold: 500 characters.
-- **Isolation Drift**: Detects and logs when the selected container changes between runs, preventing false-positive risk.
-
-## 4. Risk Engine (V2)
-
-The engine classifies changes (`LOW`, `MEDIUM`, `HIGH`) using a deterministic proximity-based clustering model:
-- **Proximity Clustering**: Detects verb-noun pairs (e.g., "sell" within 5 words of "biometric") indicating high-risk data intent.
-- **Negation Awareness**: Neutralizes clusters if a negation word (e.g., "not", "except") appears within 3 tokens before the verb.
-- **Negation Shift**: Specifically flags the removal of negative modifiers in high-risk clauses for `MODIFIED` sections.
-- **Structural Erosion**: Detects the deletion of mandatory compliance sections (e.g., "Arbitration", "Liability").
-- **Contextual Multipliers**: Adjusts risk levels based on section importance (e.g., 2.0x for "Refund Policy").
-
-## 5. Job & Concurrency Control
-
-### Job State Machine
-- `PENDING`: Created in database and enqueued in the in-memory FIFO queue.
-- `PROCESSING`: Active execution with a hard 15-second runtime limit.
-- `COMPLETED`: Results persisted in the `result` JSONB column.
-- `FAILED`: Error classification persisted in the `error_type` column.
-
-### Capacity Management
-- **Global Concurrency**: Controlled via an in-memory guard (default: 5 concurrent slots).
-- **Per-Key Fairness**: Limits active jobs per API key based on the assigned tier to prevent resource monopolization.
-- **FIFO Queuing**: Jobs beyond capacity are held in an in-memory queue (up to 1,000 pending jobs).
-- **Crash Recovery**: Service restart triggers a recovery task that transitions orphaned `PROCESSING` jobs to `FAILED`.
-
-## 6. Quotas & Limits
-
-| Tier | Monthly Quota | URL Limit | Concurrency | Max Batch Size | Burst (Req) | Refill (Req/s) |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **FREE** | 30 jobs | 3 URLs | 1 job | 3 URLs | 30 | 0.5 |
-| **STARTER** | 500 jobs | 10 URLs | 2 jobs | 10 URLs | 120 | 2.0 |
-| **PRO** | 2,500 jobs | 25 URLs | 5 jobs | 25 URLs | 600 | 10.0 |
-
-*Usage is tracked per calendar month and resets at 00:00:00Z on the 1st.*
-
-## 7. API Reference
-
-All requests require `Authorization: Bearer <key>`.
-
-### Common Headers
-- `X-Request-Id`: Unique identifier for request tracing.
-- `Idempotency-Key`: Ensures request deduplication. Returns cached `job_id` if the same payload is resubmitted.
-
-### Endpoints
-- `POST /v1/check`: Synchronous monitoring (limited to quick-fetch pages).
-- `POST /v1/monitor`: Asynchronous URL submission. Returns `202 Accepted` with `job_id`.
-- `POST /v1/monitor/batch`: Multi-URL submission. Returns `batch_id` for status polling.
-- `GET /v1/jobs/:id`: Retrieve job status. `COMPLETED` results include word-level diffs (Myers algorithm).
-- `GET /v1/batches/:id`: Aggregated status for a batch submission (counts of pending/processing/failed).
-- `GET /v1/usage`: Detailed tier metrics and usage counters.
-- `GET /v1/internal/metrics`: System-wide job performance and database statistics (Requires `X-Internal-Token`).
-
-## 8. Observability & Security
-
-- **Abuse Monitoring**: Instrumentation for idempotency reuse, high-frequency job polling, and abnormal error rates.
-- **Structured Logging**: JSON logs (Pino) with automatic daily rotation and request correlation.
-- **Error Mapping**: Internal failures are mapped to deterministic public error types (e.g., `DNS_FAILURE`, `PAGE_ACCESS_BLOCKED`, `JOB_TIMEOUT`).
-- **Data Integrity**: SHA-256 hashing for all API keys; raw keys are never persisted.
-
-## 9. Setup & Operations
-
-### Prerequisites
-- Node.js v20+
-- PostgreSQL v14+
-
-### Installation
 ```bash
+curl -X POST https://api.policydiff.com/v1/check \
+  -H "Authorization: Bearer demo_key" \
+  -d '{ "url": "https://stripe.com/privacy" }'
+```
+
+---
+
+## Who This Is For
+
+PolicyDiff is built for teams that need to monitor the external legal landscape at scale:
+
+*   **Security Engineers**: Track vendor data-handling changes that impact your security posture.
+*   **Compliance Engineers**: Ensure third-party processors remain compliant with GDPR, CCPA, and internal standards.
+*   **Vendor Risk Teams**: Automate the tedious review process for hundreds of vendor TOS and Privacy updates.
+*   **SaaS Platform Developers**: Build native "Policy Monitoring" features into your own applications.
+*   **Legal Tech Platforms**: Power your automated legal audit and document review workflows.
+
+---
+
+## Why This Exists
+
+SaaS vendors frequently update legal terms and pricing without clear notification. For compliance teams, manually monitoring hundreds of vendors is unscalable and prone to missing critical updates.
+
+Traditional diff tools fail because they are "noise-sensitive"—a simple change in a website's footer or a date update triggers a false positive. PolicyDiff is "intent-sensitive," designed to find the 1% of changes that actually matter to your legal and security posture.
+
+---
+
+## Why Not Just Use Git Diff?
+
+Standard diff tools like `git diff` or `wdiff` are built for code and plain text. They fail on policy pages for several reasons:
+
+*   **HTML Layout Noise**: A CMS update that moves the sidebar triggers a "change" even if the legal text is identical.
+*   **Tables & Nested Lists**: HTML tables are notoriously difficult to diff; PolicyDiff canonicalizes them into stable Markdown.
+*   **Dynamic Components**: Scripts, ads, and navigation links change constantly, polluting standard diffs.
+*   **Semantic Meaning Shifts**: `git diff` can't tell the difference between a typo fix and a critical liability removal.
+
+### Standard Diff (Noisy)
+```diff
+- <div class="footer-v2">
+-   <span>Last Updated: Jan 2024</span>
++ <div class="footer-v3">
++   <span>Last Updated: March 2024</span>
+```
+
+### PolicyDiff (Semantic)
+```text
+Data Sharing Section
+- We do not share personal data with partners.
++ We may share personal data with partners.
+
+Risk Level: HIGH
+Reason: Negation removal detected near high-risk clause.
+```
+
+---
+
+## Key Differentiators
+
+What makes PolicyDiff different from a standard `git diff` or LLM-based analysis:
+
+*   **Negation Detection**: Specifically flags shifts from "do not share" to "may share."
+*   **Deterministic Logic**: No probabilistic AI. Results are 100% reproducible and auditable.
+*   **Structural Normalization**: Automatically converts messy HTML tables and nested lists into stable Markdown formats.
+*   **Temporal Masking**: Intelligently ignores "Last Updated" dates and version numbers that cause false alerts.
+
+---
+
+## Architecture Diagram
+
+```mermaid
+graph TD
+    URL[URL Input] --> Fetcher[Headless Fetcher]
+    Fetcher --> Normalizer[HTML Normalizer]
+    Normalizer --> Sectionizer[Section Hasher]
+    Sectionizer --> DiffEngine[Deterministic Diff Engine]
+    DiffEngine --> RiskClassifier[Risk Classifier]
+    RiskClassifier --> APIResponse[JSON API Response]
+```
+
+---
+
+## Key Features
+
+*   **Deterministic Change Detection**: Identical inputs always yield identical results.
+*   **Section-Level Hashing**: Uses SHA-256 to track exactly which policy clauses were modified.
+*   **Semantic Intent Detection**: Proximity clustering identifies high-risk verb-noun pairs.
+*   **Isolation Drift Protection**: Detects if a website's layout changes significantly to prevent extraction errors.
+*   **API-First Design**: Built for easy integration into existing security and compliance workflows.
+
+---
+
+## Quick Demo
+
+### Example 1: Privacy Policy Change
+**Input:** `https://stripe.com/privacy`
+
+```json
+{
+  "risk_level": "HIGH",
+  "changes": [
+    {
+      "section": "Data Sharing",
+      "type": "MODIFIED",
+      "risk": "HIGH",
+      "reason": "Negation removed near high-risk clause",
+      "details": [
+        { "value": "We do not ", "removed": true, "added": false },
+        { "value": "We may ", "removed": false, "added": true },
+        { "value": "share data with third parties.", "removed": false, "added": false }
+      ]
+    }
+  ]
+}
+```
+
+### Example 2: Pricing & Terms Change
+**Input:** `https://aws.amazon.com/service-terms`
+
+```json
+{
+  "risk_level": "MEDIUM",
+  "changes": [
+    {
+      "section": "Payment Terms",
+      "type": "MODIFIED",
+      "risk": "MEDIUM",
+      "reason": "Numerical value change detected in liability section",
+      "details": [
+        { "value": "$500", "removed": true, "added": false },
+        { "value": "$1,000", "removed": false, "added": true }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+## CLI (Coming Soon)
+
+PolicyDiff is designed to fit into your CI/CD pipelines and local terminal workflows.
+
+```bash
+# Audit a policy directly from your terminal
+npx policydiff https://stripe.com/privacy
+```
+
+The CLI will support local HTML file auditing, remote URL monitoring, and automated risk scoring for your local development environment.
+
+---
+
+## Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/mobin04/policy-diff-api.git
+cd policy-diff-api
+
+# Install dependencies
 npm install
+```
+
+---
+
+## Quick Start
+
+### 1. Configure Environment
+```bash
 cp .env.config.example .env.config
-# Configure DATABASE_URL and API_SECRET
+# Update DATABASE_URL and API_SECRET
+```
+
+### 2. Initialize & Start
+```bash
+npm run migrate
 npm run dev
 ```
 
-### Validation
-Ensure pipeline stability via replay validation before deployment:
+### 3. Run a Check
 ```bash
-npx ts-node scripts/replay-validate.ts <snapshot_id> 20
+curl -X POST http://localhost:3000/v1/check \
+  -H "Authorization: Bearer YOUR_KEY" \
+  -d '{ "url": "https://example.com/privacy" }'
 ```
 
-## 10. License
-Apache License 2.0.
+---
+
+## API Reference Overview
+
+| Endpoint | Method | Description |
+| :--- | :--- | :--- |
+| `/v1/check` | `POST` | Synchronous analysis (fast fetch pages only). |
+| `/v1/monitor` | `POST` | Asynchronous monitoring job (returns `job_id`). |
+| `/v1/monitor/batch` | `POST` | Submit multiple URLs for batch processing. |
+| `/v1/jobs/:id` | `GET` | Retrieve specific diff results and risk scores. |
+| `/v1/usage` | `GET` | View current API key quota and tier limits. |
+
+---
+
+## Performance Characteristics
+
+*   **O(1) Section Comparisons**: SHA-256 hashing allows for near-instant comparison of thousands of policy sections.
+*   **High Throughput**: Capable of monitoring and analyzing thousands of pages per hour per node.
+*   **Deterministic Integrity**: Guarantees identical diff outputs across different runs and server environments.
+*   **Memory Efficiency**: Processes large legal documents with minimal memory footprint via stream-based normalization.
+
+---
+
+## How It Works
+
+PolicyDiff processes every URL through a strict deterministic pipeline:
+
+1.  **Fetch**: Retrieves HTML with browser-mimicking headers.
+2.  **Normalize**: Converts tables and lists to stable Markdown; strips navigation/footers.
+3.  **Sectionize**: Breaks content into logical sections based on header hierarchy.
+4.  **Hash**: Generates SHA-256 hashes for each section content.
+5.  **Diff**: Compares new hashes against the last stored snapshot.
+6.  **Classify**: Runs the Risk Engine to determine if changes have legal significance.
+
+---
+
+## Example Use Cases
+
+*   **Vendor Risk Management (VRM)**: Automate the monitoring of third-party vendor TOS.
+*   **Regulatory Compliance**: Ensure your public policies match internal compliance requirements.
+*   **SaaS Pricing Alerts**: Get notified immediately when competitors or vendors change pricing structures.
+*   **Legal Tech Integrations**: Build policy monitoring features into your own GRC platform.
+
+---
+
+## Architecture Overview
+
+PolicyDiff is built on a **Deterministic-First** philosophy. LLM-based diffing is often slow, expensive, and non-deterministic. PolicyDiff provides:
+
+*   **Auditability**: Every change is backed by a specific rule (e.g., proximity clustering).
+*   **Efficiency**: O(1) hash comparisons allow for monitoring thousands of pages per hour.
+*   **Reliability**: Zero hallucination risk. If the content hasn't changed, the hash won't change.
+
+---
+
+## Roadmap
+
+*   [ ] **Webhook Alerts**: Native POST notifications for "HIGH" risk changes.
+*   [ ] **Official SDKs**: Dedicated clients for Node.js and Python.
+*   [ ] **Delta Visualization**: A lightweight UI to visualize the "intent-diff" side-by-side.
+*   [ ] **CLI Tool**: Audit local HTML files or remote URLs from your terminal.
+
+---
+
+## Contributing
+
+We love contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for our standards and PR process.
+
+---
+
+## License
+
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
