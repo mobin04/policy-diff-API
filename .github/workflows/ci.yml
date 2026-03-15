@@ -14,6 +14,13 @@ jobs:
       matrix:
         node-version: [20, 22]
 
+    env:
+      PORT: 3000
+      DATABASE_URL: postgresql://user:pass@localhost:5432/db
+      API_SECRET: ci-dummy-secret-at-least-32-chars-long
+      INTERNAL_METRICS_TOKEN: ci-dummy-token
+      PROVISION_SECRET: ci-dummy-provision-secret
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

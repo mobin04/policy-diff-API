@@ -53,15 +53,12 @@ async function fetchPage(url, signal) {
             maxRedirects: 5,
             signal,
             headerGeneratorOptions: {
-                browsers: [
-                    { name: 'chrome' },
-                    { name: 'firefox' },
-                    { name: 'safari' },
-                ],
+                browsers: [{ name: 'chrome' }, { name: 'firefox' }, { name: 'safari' }],
                 devices: ['desktop'],
                 locales: ['en-US'],
             },
             retry: { limit: 0 },
+            throwHttpErrors: true,
         });
         const html = response.body;
         // Validate fetched content before returning
