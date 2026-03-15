@@ -160,14 +160,14 @@ describe('Structural Diff Engine Tests', () => {
     const longContent2 = 'A'.repeat(1000) + ' The fee is $1000.'; // No comma
     const oldSections: Section[] = [{ title: 'Fees', content: longContent1, hash: 'h1' }];
     const newSections: Section[] = [{ title: 'Fees', content: longContent2, hash: 'h2' }];
-    
+
     const changesA = diffSections(oldSections, newSections);
     expect(changesA).toHaveLength(0); // Numeric values are same (1000), ratio < 5%
 
     // Case B: Value change ($1,000 vs $1,001) -> Meaningful (numeric override)
     const longContent3 = 'A'.repeat(1000) + ' The fee is $1,001.';
     const newSectionsB: Section[] = [{ title: 'Fees', content: longContent3, hash: 'h3' }];
-    
+
     const changesB = diffSections(oldSections, newSectionsB);
     expect(changesB).toHaveLength(1); // Numeric value changed (1000 -> 1001)
     expect(changesB[0].type).toBe('MODIFIED');
@@ -177,7 +177,7 @@ describe('Structural Diff Engine Tests', () => {
     const longContentV2 = 'A'.repeat(1000) + ' Version 1.2.4';
     const osV: Section[] = [{ title: 'Version', content: longContentV1, hash: 'hv1' }];
     const nsV: Section[] = [{ title: 'Version', content: longContentV2, hash: 'hv2' }];
-    
+
     const changesV = diffSections(osV, nsV);
     expect(changesV).toHaveLength(0);
 
@@ -186,7 +186,7 @@ describe('Structural Diff Engine Tests', () => {
     const longContentID2 = 'A'.repeat(1000) + ' Revision v2';
     const osID: Section[] = [{ title: 'Revision', content: longContentID1, hash: 'hid1' }];
     const nsID: Section[] = [{ title: 'Revision', content: longContentID2, hash: 'hid2' }];
-    
+
     const changesID = diffSections(osID, nsID);
     expect(changesID).toHaveLength(0);
   });
@@ -223,11 +223,9 @@ describe('Structural Diff Engine Tests', () => {
       { title: 'ABCDEFG', content: 'C1', hash: 'h1' },
       { title: 'ABCDEFH', content: 'C2', hash: 'h2' },
     ];
-    const ns: Section[] = [
-      { title: 'ABCDEFX', content: 'C1 mod', hash: 'h1-mod' },
-    ];
+    const ns: Section[] = [{ title: 'ABCDEFX', content: 'C1 mod', hash: 'h1-mod' }];
     // Similarity: 1 - 1/7 = 0.857 (Low confidence: 0.85-0.89)
-    
+
     const result = diffSections(os, ns, { url: 'test' }) as any;
     expect(result.fuzzy_match_count).toBe(1);
     expect(result.fuzzy_collision_count).toBe(1);

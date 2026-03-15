@@ -23,7 +23,7 @@ export async function checkIdempotency(
   apiKeyId: number,
   idempotencyKey: string | undefined,
   requestBody: Record<string, unknown>,
-  logger?: { info: (obj: object, msg: string) => void; warn: (obj: object, msg: string) => void }
+  logger?: { info: (obj: object, msg: string) => void; warn: (obj: object, msg: string) => void },
 ): Promise<Record<string, unknown> | null> {
   if (!idempotencyKey) return null;
 

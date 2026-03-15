@@ -11,7 +11,7 @@ describe('ReplayValidatorService', () => {
   const mockPipelineResult = {
     normalizedContent: 'Policy',
     sections: [{ title: 'Main', content: 'Policy', hash: 'hash1' }],
-    metadata: { title: 'Policy' }
+    metadata: { title: 'Policy' },
   };
 
   beforeEach(() => {
@@ -40,7 +40,7 @@ describe('ReplayValidatorService', () => {
 
     test('should pass with 0 runs (no-op)', async () => {
       (replaySnapshotRepository.getSnapshotRawHtml as jest.Mock).mockResolvedValue(mockRawHtml);
-      
+
       await expect(validateSnapshotDeterminism(mockSnapshotId, 0)).resolves.not.toThrow();
       expect(pipelineSnapshotService.processSnapshot).not.toHaveBeenCalled();
     });
@@ -55,34 +55,36 @@ describe('ReplayValidatorService', () => {
 
     test('should throw NON_DETERMINISTIC_PIPELINE_DETECTED if output drifts', async () => {
       (replaySnapshotRepository.getSnapshotRawHtml as jest.Mock).mockResolvedValue(mockRawHtml);
-      
+
       // First run returns baseline
       // Second run returns slightly different result
       (pipelineSnapshotService.processSnapshot as jest.Mock)
         .mockReturnValueOnce(mockPipelineResult)
         .mockReturnValueOnce({
           ...mockPipelineResult,
-          normalizedContent: 'Policy Drifted'
+          normalizedContent: 'Policy Drifted',
         });
 
-      await expect(validateSnapshotDeterminism(mockSnapshotId, 2))
-        .rejects.toThrow('NON_DETERMINISTIC_PIPELINE_DETECTED');
-      
+      await expect(validateSnapshotDeterminism(mockSnapshotId, 2)).rejects.toThrow(
+        'NON_DETERMINISTIC_PIPELINE_DETECTED',
+      );
+
       expect(pipelineSnapshotService.processSnapshot).toHaveBeenCalledTimes(2);
     });
 
     test('should throw if even minor metadata difference occurs', async () => {
       (replaySnapshotRepository.getSnapshotRawHtml as jest.Mock).mockResolvedValue(mockRawHtml);
-      
+
       (pipelineSnapshotService.processSnapshot as jest.Mock)
         .mockReturnValueOnce(mockPipelineResult)
         .mockReturnValueOnce({
           ...mockPipelineResult,
-          metadata: { title: 'Policy Changed' }
+          metadata: { title: 'Policy Changed' },
         });
 
-      await expect(validateSnapshotDeterminism(mockSnapshotId, 2))
-        .rejects.toThrow('NON_DETERMINISTIC_PIPELINE_DETECTED');
+      await expect(validateSnapshotDeterminism(mockSnapshotId, 2)).rejects.toThrow(
+        'NON_DETERMINISTIC_PIPELINE_DETECTED',
+      );
     });
   });
 
@@ -120,7 +122,7 @@ describe('ReplayValidatorService', () => {
       await validateSnapshotDeterminism(mockSnapshotId, 2);
       // Call 2
       await validateSnapshotDeterminism(mockSnapshotId, 2);
-      
+
       expect(pipelineSnapshotService.processSnapshot).toHaveBeenCalledTimes(4);
     });
   });

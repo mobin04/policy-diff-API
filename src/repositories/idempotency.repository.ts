@@ -62,10 +62,10 @@ export async function saveIdempotencyRecord(
   const db = client || DB;
 
   // STEP 2: Cross-key collision detection
-  const collisionCheck = await db.query('SELECT api_key_id FROM idempotency_keys WHERE idempotency_key = $1 AND api_key_id != $2 LIMIT 1', [
-    idempotencyKey,
-    apiKeyId,
-  ]);
+  const collisionCheck = await db.query(
+    'SELECT api_key_id FROM idempotency_keys WHERE idempotency_key = $1 AND api_key_id != $2 LIMIT 1',
+    [idempotencyKey, apiKeyId],
+  );
 
   if (collisionCheck.rows.length > 0) {
     // Log structured event but do not block (isolation is still enforced by api_key_id in PRIMARY KEY or unique constraint)

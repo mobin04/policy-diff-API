@@ -40,7 +40,7 @@ class SlidingWindowCounter {
     while (firstValidIndex < timestamps.length && timestamps[firstValidIndex] < cutoff) {
       firstValidIndex++;
     }
-    
+
     if (firstValidIndex > 0) {
       timestamps = timestamps.slice(firstValidIndex);
     }
@@ -79,11 +79,11 @@ export async function recordAbuseEvent(
   eventType: AbuseEventType,
   apiKeyId?: number | null,
   requestIp?: string,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>,
 ): Promise<void> {
   await DB.query(
     'INSERT INTO request_abuse_events (event_type, api_key_id, request_ip, metadata) VALUES ($1, $2, $3, $4)',
-    [eventType, apiKeyId || null, requestIp || null, metadata ? JSON.stringify(metadata) : null]
+    [eventType, apiKeyId || null, requestIp || null, metadata ? JSON.stringify(metadata) : null],
   );
 }
 
@@ -104,7 +104,10 @@ export function trackErrorRate(apiKeyId: number): boolean {
 }
 
 // Periodically cleanup in-memory counters (every 5 minutes)
-setInterval(() => {
-  jobPollCounter.cleanup();
-  errorRateCounter.cleanup();
-}, 5 * 60 * 1000).unref();
+setInterval(
+  () => {
+    jobPollCounter.cleanup();
+    errorRateCounter.cleanup();
+  },
+  5 * 60 * 1000,
+).unref();

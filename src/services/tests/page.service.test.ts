@@ -24,7 +24,7 @@ jest.mock('../isolationStability.service');
 describe('PageService', () => {
   const mockUrl = 'https://example.com';
   const mockCanonicalUrl = 'https://example.com/';
-  
+
   beforeEach(() => {
     jest.clearAllMocks();
     (canonicalizeUrl as jest.Mock).mockReturnValue(mockCanonicalUrl);
@@ -43,7 +43,7 @@ describe('PageService', () => {
       (pageRepository.getPageInfo as jest.Mock).mockResolvedValue(null);
       (pageRepository.savePage as jest.Mock).mockResolvedValue({
         status: 'first_version',
-        pageId: 1
+        pageId: 1,
       });
 
       const result = await checkPage(mockUrl);
@@ -57,7 +57,7 @@ describe('PageService', () => {
       (pageRepository.getPageInfo as jest.Mock).mockResolvedValue({ id: 1, isolationFingerprint: 'fp' });
       (pageRepository.savePage as jest.Mock).mockResolvedValue({
         status: 'unchanged',
-        pageId: 1
+        pageId: 1,
       });
 
       const result = await checkPage(mockUrl);
@@ -72,9 +72,12 @@ describe('PageService', () => {
       (pageRepository.savePage as jest.Mock).mockResolvedValue({
         status: 'modified',
         pageId: 1,
-        changes: mockChanges
+        changes: mockChanges,
       });
-      (analyzeRisk as jest.Mock).mockReturnValue({ risk_level: 'MEDIUM', changes: mockChanges.map(c => ({ ...c, risk: 'MEDIUM', reason: 'R' })) });
+      (analyzeRisk as jest.Mock).mockReturnValue({
+        risk_level: 'MEDIUM',
+        changes: mockChanges.map((c) => ({ ...c, risk: 'MEDIUM', reason: 'R' })),
+      });
 
       const result = await checkPage(mockUrl);
 
@@ -91,7 +94,7 @@ describe('PageService', () => {
       (pageRepository.checkCooldown as jest.Mock).mockResolvedValue({
         inCooldown: true,
         lastCheckedAt: new Date(),
-        lastResult: { message: 'Cached' }
+        lastResult: { message: 'Cached' },
       });
 
       const result = await checkPage(mockUrl, { minInterval: 10 });
@@ -126,7 +129,7 @@ describe('PageService', () => {
       expect(result.result?.isolation_drift).toBe(true);
       expect(mockLogger.warn).toHaveBeenCalledWith(
         expect.objectContaining({ current_fingerprint: 'fp' }),
-        'ISOLATION_CONTAINER_DRIFT_DETECTED'
+        'ISOLATION_CONTAINER_DRIFT_DETECTED',
       );
     });
 

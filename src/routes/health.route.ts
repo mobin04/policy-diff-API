@@ -4,7 +4,7 @@ import { areMigrationsPending } from '../db';
 
 /**
  * Health and Readiness Endpoints
- * 
+ *
  * /health: Liveness probe for process monitoring.
  * /ready: Readiness probe for deployment orchestration (K8s/ALB).
  */

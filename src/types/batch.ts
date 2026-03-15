@@ -59,4 +59,3 @@ export type BatchStatusResponse = {
   failed: number;
   jobs: BatchJobStatusItem[];
 };
-

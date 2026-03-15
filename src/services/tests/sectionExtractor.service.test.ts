@@ -25,12 +25,12 @@ describe('SectionExtractorService', () => {
       expect(sections[0]).toEqual({
         title: 'main title',
         content: 'Some intro text.',
-        hash: 'hash_16'
+        hash: 'hash_16',
       });
       expect(sections[1]).toEqual({
         title: 'sub title',
         content: 'Sub content here.',
-        hash: 'hash_17'
+        hash: 'hash_17',
       });
     });
 

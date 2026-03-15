@@ -26,7 +26,7 @@ describe('Tier System V2 Enforcement', () => {
   describe('URL Limit Enforcement', () => {
     test('FREE tier should not exceed 3 unique URLs', async () => {
       const mockUsage = { id: mockApiKeyId, tier: 'FREE', monthly_usage: 0, monthly_quota: 30 };
-      
+
       // Mock repository calls
       (apiKeyRepository.countDistinctUrlsForKey as jest.Mock).mockResolvedValue(3);
       (DB.connect as jest.Mock).mockResolvedValue({
@@ -44,7 +44,7 @@ describe('Tier System V2 Enforcement', () => {
 
     test('STARTER tier should not exceed 10 unique URLs', async () => {
       const mockUsage = { id: mockApiKeyId, tier: 'STARTER', monthly_usage: 0, monthly_quota: 500 };
-      
+
       (apiKeyRepository.countDistinctUrlsForKey as jest.Mock).mockResolvedValue(10);
       (DB.connect as jest.Mock).mockResolvedValue({
         query: jest.fn().mockImplementation((sql, params) => {
@@ -61,7 +61,7 @@ describe('Tier System V2 Enforcement', () => {
 
     test('PRO tier should not exceed 25 unique URLs', async () => {
       const mockUsage = { id: mockApiKeyId, tier: 'PRO', monthly_usage: 0, monthly_quota: 2500 };
-      
+
       (apiKeyRepository.countDistinctUrlsForKey as jest.Mock).mockResolvedValue(25);
       (DB.connect as jest.Mock).mockResolvedValue({
         query: jest.fn().mockImplementation((sql, params) => {
@@ -78,7 +78,7 @@ describe('Tier System V2 Enforcement', () => {
 
     test('should allow monitoring an ALREADY monitored URL even if limit reached', async () => {
       const mockUsage = { id: mockApiKeyId, tier: 'FREE', monthly_usage: 0, monthly_quota: 30 };
-      
+
       (apiKeyRepository.countDistinctUrlsForKey as jest.Mock).mockResolvedValue(3);
       (DB.connect as jest.Mock).mockResolvedValue({
         query: jest.fn().mockImplementation((sql, params) => {
@@ -147,15 +147,19 @@ describe('Tier System V2 Enforcement', () => {
     test('FREE tier should enforce 1 concurrent job', async () => {
       const mockUsage = { id: mockApiKeyId, tier: 'FREE' };
       const jobId = 'job-1';
-      
-      (monitorJobRepository.getJobById as jest.Mock).mockResolvedValue({ id: jobId, apiKeyId: mockApiKeyId, pageId: 10 });
+
+      (monitorJobRepository.getJobById as jest.Mock).mockResolvedValue({
+        id: jobId,
+        apiKeyId: mockApiKeyId,
+        pageId: 10,
+      });
       (monitorJobRepository.getActiveJobCountForKey as jest.Mock).mockResolvedValue(1);
-      
+
       (DB.query as jest.Mock).mockResolvedValue({ rows: [mockUsage] });
 
       const { processMonitorJob } = require('../monitorJob.service');
       const { acquireJob, releaseJob } = require('../../utils/concurrencyGuard');
-      
+
       // Setup guard mock
       const guard = require('../../utils/concurrencyGuard');
       jest.spyOn(guard, 'acquireJob').mockReturnValue(true);

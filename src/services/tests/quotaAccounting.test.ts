@@ -62,12 +62,12 @@ describe('Quota Accounting', () => {
 
     // Verify that getUsageSnapshot was called (to show current status)
     expect(usageService.getUsageSnapshot).toHaveBeenCalledWith(mockApiKey.id);
-    
+
     // Verify that consumeJobs or any increment logic was NOT called
     // (Since we mocked the whole service, we can check other functions)
     const consumeJobs = require('../usage.service').consumeJobs;
     const consumeJobsWithClient = require('../usage.service').consumeJobsWithClient;
-    
+
     expect(consumeJobs).not.toHaveBeenCalled();
     expect(consumeJobsWithClient).not.toHaveBeenCalled();
   });

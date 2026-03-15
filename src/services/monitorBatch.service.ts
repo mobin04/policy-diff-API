@@ -67,16 +67,13 @@ export async function createMonitorBatch(
 
     // Check which of the incoming URLs are new for this key
     for (const url of uniqueUrls) {
-      const pageIdResult = await client.query<{ id: number }>(
-        'SELECT id FROM pages WHERE url = $1',
-        [url]
-      );
-      
+      const pageIdResult = await client.query<{ id: number }>('SELECT id FROM pages WHERE url = $1', [url]);
+
       let alreadyMonitored = false;
       if (pageIdResult.rows.length > 0) {
         const jobCheck = await client.query(
           'SELECT 1 FROM monitor_jobs WHERE api_key_id = $1 AND page_id = $2 LIMIT 1',
-          [apiKeyId, pageIdResult.rows[0].id]
+          [apiKeyId, pageIdResult.rows[0].id],
         );
         if (jobCheck.rows.length > 0) {
           alreadyMonitored = true;

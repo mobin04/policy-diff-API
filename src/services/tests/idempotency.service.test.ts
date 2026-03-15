@@ -46,7 +46,7 @@ describe('IdempotencyService', () => {
         mockApiKeyId,
         mockKey,
         mockHash,
-        mockResponse
+        mockResponse,
       );
     });
 

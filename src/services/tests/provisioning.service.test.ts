@@ -31,7 +31,7 @@ describe('ProvisioningService', () => {
       // Verify hash logic
       const rawKey = result.rawKey;
       const expectedHash = crypto.createHash('sha256').update(rawKey).digest('hex');
-      
+
       const lastCall = (apiKeyRepository.insertProvisionedKey as jest.Mock).mock.calls[0];
       expect(lastCall[0]).toBe(expectedHash);
       expect(lastCall[1]).toMatchObject({
@@ -45,7 +45,7 @@ describe('ProvisioningService', () => {
 
     test('should use pd_live_ prefix for production environment', async () => {
       (apiKeyRepository.findActiveByEmail as jest.Mock).mockResolvedValue(null);
-      
+
       const result = await provisionApiKey({
         ...mockInput,
         environment: 'prod',
@@ -56,7 +56,7 @@ describe('ProvisioningService', () => {
 
     test('should assign correct quota for STARTER tier', async () => {
       (apiKeyRepository.findActiveByEmail as jest.Mock).mockResolvedValue(null);
-      
+
       await provisionApiKey({
         ...mockInput,
         tier: 'STARTER',
@@ -68,7 +68,7 @@ describe('ProvisioningService', () => {
 
     test('should assign correct quota for PRO tier', async () => {
       (apiKeyRepository.findActiveByEmail as jest.Mock).mockResolvedValue(null);
-      
+
       await provisionApiKey({
         ...mockInput,
         tier: 'PRO',
@@ -101,7 +101,7 @@ describe('ProvisioningService', () => {
 
     test('should calculate quota reset at as first day of next month', async () => {
       (apiKeyRepository.findActiveByEmail as jest.Mock).mockResolvedValue(null);
-      
+
       // Use fake timers to control "now"
       const mockNow = new Date('2026-02-15T12:00:00Z');
       jest.useFakeTimers().setSystemTime(mockNow);
@@ -110,7 +110,7 @@ describe('ProvisioningService', () => {
 
       const lastCall = (apiKeyRepository.insertProvisionedKey as jest.Mock).mock.calls[0];
       const quotaResetAt = lastCall[2];
-      
+
       expect(quotaResetAt.getUTCFullYear()).toBe(2026);
       expect(quotaResetAt.getUTCMonth()).toBe(2); // March (0-indexed)
       expect(quotaResetAt.getUTCDate()).toBe(1);
@@ -121,7 +121,7 @@ describe('ProvisioningService', () => {
 
     test('should handle year rollover for quota reset', async () => {
       (apiKeyRepository.findActiveByEmail as jest.Mock).mockResolvedValue(null);
-      
+
       const mockNow = new Date('2026-12-20T12:00:00Z');
       jest.useFakeTimers().setSystemTime(mockNow);
 
@@ -129,7 +129,7 @@ describe('ProvisioningService', () => {
 
       const lastCall = (apiKeyRepository.insertProvisionedKey as jest.Mock).mock.calls[0];
       const quotaResetAt = lastCall[2];
-      
+
       expect(quotaResetAt.getUTCFullYear()).toBe(2027);
       expect(quotaResetAt.getUTCMonth()).toBe(0); // January
       expect(quotaResetAt.getUTCDate()).toBe(1);
@@ -172,7 +172,7 @@ describe('ProvisioningService', () => {
       expect(result.rawKey).toMatch(/^pd_live_[a-f0-9]{64}$/);
       expect(result.rotatedAt).toBe(mockRotatedAt);
       expect(apiKeyRepository.findActiveByEmail).toHaveBeenCalledWith(mockEmail);
-      
+
       const rawKey = result.rawKey;
       const expectedHash = crypto.createHash('sha256').update(rawKey).digest('hex');
       expect(apiKeyRepository.updateApiKeyHash).toHaveBeenCalledWith(mockApiKeyRecord.id, expectedHash);

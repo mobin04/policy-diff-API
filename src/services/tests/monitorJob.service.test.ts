@@ -30,12 +30,12 @@ describe('MonitorJobService', () => {
   const mockUrl = 'https://example.com';
   const mockCanonicalUrl = 'https://example.com/';
   const mockJob = { id: 'job-123', status: 'PENDING' };
-  
+
   let mockClient: any;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    
+
     mockClient = {
       query: jest.fn().mockImplementation((sql) => {
         if (sql.includes('SELECT id FROM pages')) return { rows: [] };
@@ -50,7 +50,7 @@ describe('MonitorJobService', () => {
       tier: 'FREE',
       monthlyUsage: 1,
       monthlyQuota: 100,
-      remaining: 99
+      remaining: 99,
     });
     (apiKeyRepository.countDistinctUrlsForKey as jest.Mock).mockResolvedValue(0);
     (pageRepository.ensurePageExists as jest.Mock).mockResolvedValue(1);
@@ -66,7 +66,7 @@ describe('MonitorJobService', () => {
         expect(mockClient.query).toHaveBeenCalledWith('BEGIN');
         expect(mockClient.query).toHaveBeenCalledWith('COMMIT');
         expect(mockClient.release).toHaveBeenCalled();
-        
+
         expect(canonicalizeUrl).toHaveBeenCalledWith(mockUrl);
         expect(usageService.consumeJobsWithClient).toHaveBeenCalled();
         expect(pageRepository.ensurePageExists).toHaveBeenCalledWith(mockCanonicalUrl, mockClient);
@@ -82,7 +82,7 @@ describe('MonitorJobService', () => {
           idem.key,
           idem.requestHash,
           { job_id: mockJob.id, status: mockJob.status },
-          mockClient
+          mockClient,
         );
       });
     });

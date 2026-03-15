@@ -32,7 +32,7 @@ describe('ApiKeyAuthPlugin', () => {
 
   test('should authenticate valid key and NOT increment usage', async () => {
     (apiKeyRepository.findApiKeyByRawKey as jest.Mock).mockResolvedValue(mockApiKey);
-    
+
     const app = await createMockApp();
 
     const response = await app.inject({
@@ -60,7 +60,7 @@ describe('ApiKeyAuthPlugin', () => {
 
   test('should fail if key is invalid', async () => {
     (apiKeyRepository.findApiKeyByRawKey as jest.Mock).mockResolvedValue(null);
-    
+
     const app = await createMockApp();
 
     const response = await app.inject({

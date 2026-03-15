@@ -58,7 +58,7 @@ export async function getJobById(jobId: string): Promise<MonitorJob | null> {
      FROM monitor_jobs j
      JOIN pages p ON j.page_id = p.id
      WHERE j.id = $1`,
-    [jobId]
+    [jobId],
   );
 
   if (result.rows.length === 0) {

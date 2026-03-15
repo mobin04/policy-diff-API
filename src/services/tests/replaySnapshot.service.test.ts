@@ -28,7 +28,7 @@ describe('ReplaySnapshotService', () => {
 
       expect(result).toEqual({
         snapshotId: mockId,
-        canonicalUrl: mockCanonicalUrl
+        canonicalUrl: mockCanonicalUrl,
       });
 
       expect(canonicalizeUrl).toHaveBeenCalledWith(mockUrl);

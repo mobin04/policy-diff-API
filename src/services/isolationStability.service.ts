@@ -12,10 +12,7 @@
  * @param currentFingerprint - Fingerprint from the current run
  * @returns true if drift detected, false otherwise
  */
-export function detectIsolationDrift(
-  previousFingerprint: string | null,
-  currentFingerprint: string
-): boolean {
+export function detectIsolationDrift(previousFingerprint: string | null, currentFingerprint: string): boolean {
   if (previousFingerprint === null) {
     return false;
   }

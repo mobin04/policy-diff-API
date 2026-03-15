@@ -21,10 +21,6 @@ describe('Internal Endpoint Abuse Instrumentation', () => {
     });
 
     expect(response.statusCode).toBe(401);
-    expect(recordAbuseEvent).toHaveBeenCalledWith(
-      'INVALID_INTERNAL_TOKEN_ATTEMPT',
-      null,
-      expect.any(String)
-    );
+    expect(recordAbuseEvent).toHaveBeenCalledWith('INVALID_INTERNAL_TOKEN_ATTEMPT', null, expect.any(String));
   });
 });

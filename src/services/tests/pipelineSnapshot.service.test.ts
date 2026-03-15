@@ -15,7 +15,7 @@ jest.mock('../riskEngine.service');
 
 describe('PipelineSnapshotService', () => {
   const mockRawHtml = '<html><body><h1>Policy</h1></body></html>';
-  
+
   beforeEach(() => {
     jest.clearAllMocks();
 
@@ -25,7 +25,7 @@ describe('PipelineSnapshotService', () => {
     (normalizeContent as jest.Mock).mockReturnValue('normalized content');
     (extractSections as jest.Mock).mockReturnValue([
       { title: 'Z Section', content: 'Z content', hash: 'hashZ' },
-      { title: 'A Section', content: 'A content', hash: 'hashA' }
+      { title: 'A Section', content: 'A content', hash: 'hashA' },
     ]);
     (generateDateMaskedHash as jest.Mock).mockReturnValue('global-hash');
     (analyzeRisk as jest.Mock).mockReturnValue({ risk_level: 'MEDIUM', changes: [] });
@@ -41,10 +41,10 @@ describe('PipelineSnapshotService', () => {
         maskedContent: 'masked content',
         sections: [
           { title: 'A Section', content: 'A content', contentHash: 'hashA' },
-          { title: 'Z Section', content: 'Z content', contentHash: 'hashZ' }
+          { title: 'Z Section', content: 'Z content', contentHash: 'hashZ' },
         ],
         globalHash: 'global-hash',
-        riskLevel: 'MEDIUM'
+        riskLevel: 'MEDIUM',
       });
 
       // Verify coordination
@@ -61,7 +61,7 @@ describe('PipelineSnapshotService', () => {
       (extractSections as jest.Mock).mockReturnValue([
         { title: 'Beta', content: '2', hash: 'h2' },
         { title: 'Alpha', content: '1', hash: 'h1' },
-        { title: 'Gamma', content: '3', hash: 'h3' }
+        { title: 'Gamma', content: '3', hash: 'h3' },
       ]);
 
       const result = processSnapshot(mockRawHtml);
@@ -73,7 +73,7 @@ describe('PipelineSnapshotService', () => {
     test('should use secondary sort by contentHash if titles are identical', () => {
       (extractSections as jest.Mock).mockReturnValue([
         { title: 'S', content: 'c2', hash: 'hash2' },
-        { title: 'S', content: 'c1', hash: 'hash1' }
+        { title: 'S', content: 'c1', hash: 'hash1' },
       ]);
 
       const result = processSnapshot(mockRawHtml);
@@ -86,7 +86,7 @@ describe('PipelineSnapshotService', () => {
     test('should handle empty HTML gracefully if dependencies allow', () => {
       (extractMainContent as jest.Mock).mockReturnValue({ content: '', fingerprint: '' });
       (extractSections as jest.Mock).mockReturnValue([]);
-      
+
       const result = processSnapshot('');
       expect(result.sections).toHaveLength(0);
       expect(result.globalHash).toBe('global-hash');

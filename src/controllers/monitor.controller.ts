@@ -60,7 +60,7 @@ export async function createMonitorJobController(
       request.apiKey.id,
       idempotencyKey,
       request.body as Record<string, unknown>,
-      request.log
+      request.log,
     );
 
     if (cachedResponse) {

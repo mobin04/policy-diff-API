@@ -11,7 +11,7 @@ describe('UsageService', () => {
     tier: 'FREE' as const,
     monthly_quota: 100,
     monthly_usage: 10,
-    quota_reset_at: new Date('2099-01-01')
+    quota_reset_at: new Date('2099-01-01'),
   };
 
   let mockClient: any;
@@ -28,9 +28,9 @@ describe('UsageService', () => {
   describe('loadUsageRowForUpdate', () => {
     test('should load row and not reset if quota_reset_at is in future', async () => {
       mockClient.query.mockResolvedValueOnce({ rows: [mockUsageRow] });
-      
+
       const row = await loadUsageRowForUpdate(mockClient, mockApiKeyId);
-      
+
       expect(row).toEqual(mockUsageRow);
       expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('SELECT'), [mockApiKeyId]);
       expect(mockClient.query).toHaveBeenCalledTimes(1);
@@ -42,7 +42,7 @@ describe('UsageService', () => {
       mockClient.query.mockResolvedValueOnce({ rows: [] }); // UPDATE call
 
       const row = await loadUsageRowForUpdate(mockClient, mockApiKeyId);
-      
+
       expect(row.monthly_usage).toBe(0);
       expect(row.quota_reset_at.getTime()).toBeGreaterThan(Date.now());
       expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE'), expect.any(Array));
@@ -73,9 +73,8 @@ describe('UsageService', () => {
       mockClient.query.mockResolvedValueOnce({ rows: [] }); // BEGIN
       mockClient.query.mockResolvedValueOnce({ rows: [mockUsageRow] }); // SELECT
 
-      await expect(consumeJobs(mockApiKeyId, 10, { enforceBatchLimit: true }))
-        .rejects.toThrow(BatchLimitExceededError);
-      
+      await expect(consumeJobs(mockApiKeyId, 10, { enforceBatchLimit: true })).rejects.toThrow(BatchLimitExceededError);
+
       expect(mockClient.query).toHaveBeenCalledWith('ROLLBACK');
     });
 
@@ -93,9 +92,9 @@ describe('UsageService', () => {
       await expect(consumeJobs(mockApiKeyId, 1)).rejects.toThrow('TRANS_FAIL');
       expect(mockClient.query).toHaveBeenCalledWith('ROLLBACK');
     });
-    });
+  });
 
-    describe('consumeJobsWithClient', () => {
+  describe('consumeJobsWithClient', () => {
     test('should consume jobs using provided client', async () => {
       mockClient.query.mockResolvedValueOnce({ rows: [mockUsageRow] }); // SELECT
       mockClient.query.mockResolvedValueOnce({ rows: [] }); // UPDATE
@@ -107,17 +106,16 @@ describe('UsageService', () => {
       // Client should not be released by the service
       expect(mockClient.release).not.toHaveBeenCalled();
     });
-    });
+  });
 
-    describe('getUsageSnapshot', () => {
-
+  describe('getUsageSnapshot', () => {
     test('should return current usage without consuming', async () => {
       mockClient.query.mockResolvedValueOnce({ rows: [] }); // BEGIN
       mockClient.query.mockResolvedValueOnce({ rows: [mockUsageRow] }); // SELECT
       mockClient.query.mockResolvedValueOnce({ rows: [] }); // COMMIT
 
       const snapshot = await getUsageSnapshot(mockApiKeyId);
-      
+
       expect(snapshot.monthlyUsage).toBe(10);
       expect(snapshot.remaining).toBe(90);
     });

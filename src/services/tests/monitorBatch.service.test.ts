@@ -24,12 +24,12 @@ describe('MonitorBatchService', () => {
   const mockApiKeyId = 1;
   const mockUrls = ['https://a.com', 'https://b.com'];
   const mockBatchId = 'batch-123';
-  
+
   let mockClient: any;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    
+
     (monitorJobService.canAcceptNewJobs as jest.Mock).mockReturnValue(true);
     (monitorJobService.enqueueMonitorJobProcessing as jest.Mock).mockReturnValue(undefined);
 
@@ -46,13 +46,13 @@ describe('MonitorBatchService', () => {
     (usageService.loadUsageRowForUpdate as jest.Mock).mockResolvedValue({
       tier: 'FREE',
       monthly_usage: 0,
-      monthly_quota: 100
+      monthly_quota: 100,
     });
     (usageService.consumeJobsWithClient as jest.Mock).mockResolvedValue({
       tier: 'FREE',
       monthlyUsage: 2,
       monthlyQuota: 100,
-      remaining: 98
+      remaining: 98,
     });
     (apiKeyRepository.countDistinctUrlsForKey as jest.Mock).mockResolvedValue(0);
     (monitorBatchRepository.createBatch as jest.Mock).mockResolvedValue({ id: mockBatchId });
@@ -102,7 +102,7 @@ describe('MonitorBatchService', () => {
         (monitorBatchRepository.createBatch as jest.Mock).mockRejectedValue(new Error('CRASH'));
 
         await expect(createMonitorBatch(mockApiKeyId, mockUrls)).rejects.toThrow('CRASH');
-        
+
         expect(mockClient.query).toHaveBeenCalledWith('BEGIN');
         expect(mockClient.query).toHaveBeenCalledWith('ROLLBACK');
       });

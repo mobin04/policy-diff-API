@@ -166,16 +166,13 @@ export async function createMonitorJob(
     const currentUrlCount = await countDistinctUrlsForKey(apiKeyId, client);
     if (currentUrlCount >= tierConfig.maxUrls) {
       // Need to check if THIS specific URL is already monitored
-      const pageIdResult = await client.query<{ id: number }>(
-        'SELECT id FROM pages WHERE url = $1',
-        [canonicalUrl]
-      );
-      
+      const pageIdResult = await client.query<{ id: number }>('SELECT id FROM pages WHERE url = $1', [canonicalUrl]);
+
       let alreadyMonitored = false;
       if (pageIdResult.rows.length > 0) {
         const jobCheck = await client.query(
           'SELECT 1 FROM monitor_jobs WHERE api_key_id = $1 AND page_id = $2 LIMIT 1',
-          [apiKeyId, pageIdResult.rows[0].id]
+          [apiKeyId, pageIdResult.rows[0].id],
         );
         if (jobCheck.rows.length > 0) {
           alreadyMonitored = true;
@@ -263,10 +260,13 @@ export async function processMonitorJob(jobId: string, logger?: Logger): Promise
       const usage = await loadUsageRowForUpdate(DB, job.apiKeyId); // Use default pool
       const tierConfig = getTierConfig(usage.tier);
       const activeJobsForKey = await getActiveJobCountForKey(job.apiKeyId);
-      
+
       if (activeJobsForKey >= tierConfig.maxConcurrentJobs) {
         if (logger) {
-          logger.debug({ jobId, apiKeyId: job.apiKeyId, tier: usage.tier }, 'Per-key concurrency limit reached, re-enqueuing');
+          logger.debug(
+            { jobId, apiKeyId: job.apiKeyId, tier: usage.tier },
+            'Per-key concurrency limit reached, re-enqueuing',
+          );
         }
         // At per-key capacity: release global slot and retry start via re-enqueue after delay
         releaseJob(jobId);

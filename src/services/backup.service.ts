@@ -6,7 +6,7 @@ import { FastifyBaseLogger } from 'fastify';
 
 /**
  * Internal Backup Service
- * 
+ *
  * Executes a deterministic pg_dump and manages retention.
  */
 
@@ -31,16 +31,16 @@ export async function performBackup(logger: FastifyBaseLogger): Promise<void> {
         logger.error({ err: error, stderr }, 'Database backup FAILED');
         return reject(error);
       }
-      
+
       logger.info({ filepath }, 'Database backup SUCCESS');
-      
+
       // Cleanup old backups (Keep 30 days)
       try {
         cleanupOldBackups(logger);
       } catch (cleanupErr) {
         logger.warn({ err: cleanupErr }, 'Backup cleanup failed (non-critical)');
       }
-      
+
       resolve();
     });
   });
@@ -51,7 +51,7 @@ function cleanupOldBackups(logger: FastifyBaseLogger) {
   const now = Date.now();
   const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
 
-  files.forEach(file => {
+  files.forEach((file) => {
     const filePath = path.join(BACKUP_DIR, file);
     const stats = fs.statSync(filePath);
     if (now - stats.mtimeMs > thirtyDaysMs) {
