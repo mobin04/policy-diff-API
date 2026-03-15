@@ -1,0 +1,21 @@
+PolicyDiff API
+Copyright 2026 Mobin Mathew
+
+This product includes software developed by third parties under various
+open-source licenses. The following is a non-exhaustive list of
+third-party components used in this project:
+
+- Fastify (MIT)
+- Cheerio (MIT)
+- Got-Scraping (MIT)
+- diff (BSD-3-Clause)
+- Fast-Levenshtein (MIT)
+- Dotenv (BSD-2-Clause)
+- Node-Cron (MIT)
+- node-postgres (MIT)
+- Pino-Roll (MIT)
+- Fastify-Plugin (MIT)
+
+Detailed license text for these dependencies can be found in their
+respective source repositories or within the node_modules folder
+of this distribution.
