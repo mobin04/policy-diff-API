@@ -22,6 +22,8 @@ async function requestLoggerPluginFn(fastify: FastifyInstance): Promise<void> {
   // Log completed requests with timing and metadata
   fastify.addHook('onResponse', async (request: FastifyRequest, reply: FastifyReply) => {
     // Skip logging for health and readiness probes to avoid noise
+    // Using routeOptions.url is robust against query parameters and trailing slashes
+    const routeUrl = request.routeOptions?.url;
     if (request.url === '/health' || request.url === '/ready') {
       return;
     }

@@ -11,7 +11,7 @@ jest.mock('../../db', () => ({
 describe('Request Abuse Service', () => {
     beforeEach(() => {
         jest.clearAllMocks();
-        // We cannot easily reset the internal private SlidingWindowCounter instances 
+        // We cannot easily reset the internal private SlidingWindowCounter instances
         // without exporting them or adding a reset method.
         // For testing purposes, we'll use unique keys.
     });
@@ -40,11 +40,21 @@ describe('Request Abuse Service', () => {
     describe('recordAbuseEvent', () => {
         test('should record event to database', async () => {
             await (0, requestAbuse_service_1.recordAbuseEvent)('IDEMPOTENCY_CONFLICT', 123, '127.0.0.1', { key: 'val' });
-            expect(db_1.DB.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO request_abuse_events'), ['IDEMPOTENCY_CONFLICT', 123, '127.0.0.1', JSON.stringify({ key: 'val' })]);
+            expect(db_1.DB.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO request_abuse_events'), [
+                'IDEMPOTENCY_CONFLICT',
+                123,
+                '127.0.0.1',
+                JSON.stringify({ key: 'val' }),
+            ]);
         });
         test('should handle null apiKeyId', async () => {
             await (0, requestAbuse_service_1.recordAbuseEvent)('INVALID_INTERNAL_TOKEN_ATTEMPT', null, '192.168.1.1');
-            expect(db_1.DB.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO request_abuse_events'), ['INVALID_INTERNAL_TOKEN_ATTEMPT', null, '192.168.1.1', null]);
+            expect(db_1.DB.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO request_abuse_events'), [
+                'INVALID_INTERNAL_TOKEN_ATTEMPT',
+                null,
+                '192.168.1.1',
+                null,
+            ]);
         });
     });
 });

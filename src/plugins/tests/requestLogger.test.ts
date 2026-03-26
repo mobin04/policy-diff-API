@@ -46,10 +46,10 @@ describe('requestLoggerPlugin', () => {
     );
   });
 
-  it('should NOT log /health requests to the database', async () => {
+  it('should NOT log /health requests even with query parameters', async () => {
     await server.inject({
       method: 'GET',
-      url: '/health',
+      url: '/health?t=12345',
     });
 
     await new Promise(resolve => setTimeout(resolve, 50));
@@ -66,7 +66,6 @@ describe('requestLoggerPlugin', () => {
 
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    // This will fail before the fix
     expect(apiLogRepository.logApiRequest).not.toHaveBeenCalled();
   });
 });

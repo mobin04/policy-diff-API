@@ -77,13 +77,13 @@ describe('MonitorBatchService', () => {
         usageService.loadUsageRowForUpdate.mockResolvedValue({
             tier: 'FREE',
             monthly_usage: 0,
-            monthly_quota: 100
+            monthly_quota: 100,
         });
         usageService.consumeJobsWithClient.mockResolvedValue({
             tier: 'FREE',
             monthlyUsage: 2,
             monthlyQuota: 100,
-            remaining: 98
+            remaining: 98,
         });
         apiKeyRepository.countDistinctUrlsForKey.mockResolvedValue(0);
         monitorBatchRepository.createBatch.mockResolvedValue({ id: mockBatchId });
