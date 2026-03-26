@@ -24,7 +24,7 @@ async function requestLoggerPluginFn(fastify: FastifyInstance): Promise<void> {
     // Skip logging for health and readiness probes to avoid noise
     // Using routeOptions.url is robust against query parameters and trailing slashes
     const routeUrl = request.routeOptions?.url;
-    if (routeUrl === '/health' || routeUrl === '/ready') {
+    if (request.url === '/health' || request.url === '/ready') {
       return;
     }
 

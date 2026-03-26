@@ -65,7 +65,6 @@ describe('requestLoggerPlugin', () => {
 
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    // This will fail before the fix
     expect(apiLogRepository.logApiRequest).not.toHaveBeenCalled();
   });
 });
