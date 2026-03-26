@@ -45,7 +45,7 @@ function cleanupOldBackups(logger) {
     const files = fs_1.default.readdirSync(BACKUP_DIR);
     const now = Date.now();
     const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
-    files.forEach(file => {
+    files.forEach((file) => {
         const filePath = path_1.default.join(BACKUP_DIR, file);
         const stats = fs_1.default.statSync(filePath);
         if (now - stats.mtimeMs > thirtyDaysMs) {

@@ -57,7 +57,9 @@ describe('Idempotency Abuse Instrumentation', () => {
         });
         const result = await (0, idempotency_service_1.checkIdempotency)(mockApiKeyId, mockKey, mockBody);
         expect(result).toEqual({ ok: true });
-        expect(requestAbuseService.recordAbuseEvent).toHaveBeenCalledWith('IDEMPOTENCY_REUSE', mockApiKeyId, undefined, { idempotency_key: mockKey });
+        expect(requestAbuseService.recordAbuseEvent).toHaveBeenCalledWith('IDEMPOTENCY_REUSE', mockApiKeyId, undefined, {
+            idempotency_key: mockKey,
+        });
     });
     test('should record IDEMPOTENCY_CONFLICT when payload differs', async () => {
         idempotencyRepository.getIdempotencyRecord.mockResolvedValue({
@@ -65,9 +67,10 @@ describe('Idempotency Abuse Instrumentation', () => {
             responseBody: { ok: true },
         });
         const mockLogger = { info: jest.fn(), warn: jest.fn() };
-        await expect((0, idempotency_service_1.checkIdempotency)(mockApiKeyId, mockKey, mockBody, mockLogger))
-            .rejects.toThrow(errors_1.ConflictError);
-        expect(requestAbuseService.recordAbuseEvent).toHaveBeenCalledWith('IDEMPOTENCY_CONFLICT', mockApiKeyId, undefined, { idempotency_key: mockKey });
+        await expect((0, idempotency_service_1.checkIdempotency)(mockApiKeyId, mockKey, mockBody, mockLogger)).rejects.toThrow(errors_1.ConflictError);
+        expect(requestAbuseService.recordAbuseEvent).toHaveBeenCalledWith('IDEMPOTENCY_CONFLICT', mockApiKeyId, undefined, {
+            idempotency_key: mockKey,
+        });
         expect(mockLogger.warn).toHaveBeenCalledWith({ api_key_id: mockApiKeyId, idempotency_key: mockKey }, 'IDEMPOTENCY_CONFLICT');
     });
 });

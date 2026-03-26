@@ -23,7 +23,7 @@ describe('PipelineSnapshotService', () => {
         normalizer_service_1.normalizeContent.mockReturnValue('normalized content');
         sectionExtractor_service_1.extractSections.mockReturnValue([
             { title: 'Z Section', content: 'Z content', hash: 'hashZ' },
-            { title: 'A Section', content: 'A content', hash: 'hashA' }
+            { title: 'A Section', content: 'A content', hash: 'hashA' },
         ]);
         hash_service_1.generateDateMaskedHash.mockReturnValue('global-hash');
         riskEngine_service_1.analyzeRisk.mockReturnValue({ risk_level: 'MEDIUM', changes: [] });
@@ -37,10 +37,10 @@ describe('PipelineSnapshotService', () => {
                 maskedContent: 'masked content',
                 sections: [
                     { title: 'A Section', content: 'A content', contentHash: 'hashA' },
-                    { title: 'Z Section', content: 'Z content', contentHash: 'hashZ' }
+                    { title: 'Z Section', content: 'Z content', contentHash: 'hashZ' },
                 ],
                 globalHash: 'global-hash',
-                riskLevel: 'MEDIUM'
+                riskLevel: 'MEDIUM',
             });
             // Verify coordination
             expect(mainContentExtractor_1.extractMainContent).toHaveBeenCalledWith(mockRawHtml);
@@ -55,7 +55,7 @@ describe('PipelineSnapshotService', () => {
             sectionExtractor_service_1.extractSections.mockReturnValue([
                 { title: 'Beta', content: '2', hash: 'h2' },
                 { title: 'Alpha', content: '1', hash: 'h1' },
-                { title: 'Gamma', content: '3', hash: 'h3' }
+                { title: 'Gamma', content: '3', hash: 'h3' },
             ]);
             const result = (0, pipelineSnapshot_service_1.processSnapshot)(mockRawHtml);
             expect(result.sections[0].title).toBe('Alpha');
@@ -65,7 +65,7 @@ describe('PipelineSnapshotService', () => {
         test('should use secondary sort by contentHash if titles are identical', () => {
             sectionExtractor_service_1.extractSections.mockReturnValue([
                 { title: 'S', content: 'c2', hash: 'hash2' },
-                { title: 'S', content: 'c1', hash: 'hash1' }
+                { title: 'S', content: 'c1', hash: 'hash1' },
             ]);
             const result = (0, pipelineSnapshot_service_1.processSnapshot)(mockRawHtml);
             expect(result.sections[0].contentHash).toBe('hash1');

@@ -23,6 +23,12 @@ const apiLog_repository_1 = require("../repositories/apiLog.repository");
 async function requestLoggerPluginFn(fastify) {
     // Log completed requests with timing and metadata
     fastify.addHook('onResponse', async (request, reply) => {
+        // Skip logging for health and readiness probes to avoid noise
+        // Using routeOptions.url is robust against query parameters and trailing slashes
+        const routeUrl = request.routeOptions?.url;
+        if (routeUrl === '/health' || routeUrl === '/ready') {
+            return;
+        }
         const responseTime = Date.now() - request.startTime;
         const apiKeyId = request.apiKey?.id ?? null;
         // Build structured log entry

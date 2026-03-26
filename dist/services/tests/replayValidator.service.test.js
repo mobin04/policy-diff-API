@@ -44,7 +44,7 @@ describe('ReplayValidatorService', () => {
     const mockPipelineResult = {
         normalizedContent: 'Policy',
         sections: [{ title: 'Main', content: 'Policy', hash: 'hash1' }],
-        metadata: { title: 'Policy' }
+        metadata: { title: 'Policy' },
     };
     beforeEach(() => {
         jest.clearAllMocks();
@@ -83,10 +83,9 @@ describe('ReplayValidatorService', () => {
                 .mockReturnValueOnce(mockPipelineResult)
                 .mockReturnValueOnce({
                 ...mockPipelineResult,
-                normalizedContent: 'Policy Drifted'
+                normalizedContent: 'Policy Drifted',
             });
-            await expect((0, replayValidator_service_1.validateSnapshotDeterminism)(mockSnapshotId, 2))
-                .rejects.toThrow('NON_DETERMINISTIC_PIPELINE_DETECTED');
+            await expect((0, replayValidator_service_1.validateSnapshotDeterminism)(mockSnapshotId, 2)).rejects.toThrow('NON_DETERMINISTIC_PIPELINE_DETECTED');
             expect(pipelineSnapshotService.processSnapshot).toHaveBeenCalledTimes(2);
         });
         test('should throw if even minor metadata difference occurs', async () => {
@@ -95,10 +94,9 @@ describe('ReplayValidatorService', () => {
                 .mockReturnValueOnce(mockPipelineResult)
                 .mockReturnValueOnce({
                 ...mockPipelineResult,
-                metadata: { title: 'Policy Changed' }
+                metadata: { title: 'Policy Changed' },
             });
-            await expect((0, replayValidator_service_1.validateSnapshotDeterminism)(mockSnapshotId, 2))
-                .rejects.toThrow('NON_DETERMINISTIC_PIPELINE_DETECTED');
+            await expect((0, replayValidator_service_1.validateSnapshotDeterminism)(mockSnapshotId, 2)).rejects.toThrow('NON_DETERMINISTIC_PIPELINE_DETECTED');
         });
     });
     describe('edge cases', () => {

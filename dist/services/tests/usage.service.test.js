@@ -11,7 +11,7 @@ describe('UsageService', () => {
         tier: 'FREE',
         monthly_quota: 100,
         monthly_usage: 10,
-        quota_reset_at: new Date('2099-01-01')
+        quota_reset_at: new Date('2099-01-01'),
     };
     let mockClient;
     beforeEach(() => {
@@ -59,8 +59,7 @@ describe('UsageService', () => {
         test('should throw BatchLimitExceededError if limit enforced', async () => {
             mockClient.query.mockResolvedValueOnce({ rows: [] }); // BEGIN
             mockClient.query.mockResolvedValueOnce({ rows: [mockUsageRow] }); // SELECT
-            await expect((0, usage_service_1.consumeJobs)(mockApiKeyId, 10, { enforceBatchLimit: true }))
-                .rejects.toThrow(errors_1.BatchLimitExceededError);
+            await expect((0, usage_service_1.consumeJobs)(mockApiKeyId, 10, { enforceBatchLimit: true })).rejects.toThrow(errors_1.BatchLimitExceededError);
             expect(mockClient.query).toHaveBeenCalledWith('ROLLBACK');
         });
         test('should throw QuotaExceededError if quota reached', async () => {

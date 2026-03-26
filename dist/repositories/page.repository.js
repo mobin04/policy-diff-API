@@ -48,7 +48,9 @@ async function getPageInfo(url) {
  * @returns Object with cooldown status and last check time
  */
 async function checkCooldown(pageId, minIntervalMinutes) {
-    const result = await db_1.DB.query('SELECT last_checked_at, last_result, isolation_fingerprint FROM pages WHERE id = $1', [pageId]);
+    const result = await db_1.DB.query('SELECT last_checked_at, last_result, isolation_fingerprint FROM pages WHERE id = $1', [
+        pageId,
+    ]);
     if (result.rows.length === 0) {
         return { inCooldown: false, lastCheckedAt: null, lastResult: null, isolationFingerprint: null };
     }
@@ -72,11 +74,7 @@ async function checkCooldown(pageId, minIntervalMinutes) {
  */
 async function updatePageCache(pageId, result, isolationFingerprint) {
     if (isolationFingerprint) {
-        await db_1.DB.query('UPDATE pages SET last_checked_at = NOW(), last_result = $2, isolation_fingerprint = $3 WHERE id = $1', [
-            pageId,
-            JSON.stringify(result),
-            isolationFingerprint,
-        ]);
+        await db_1.DB.query('UPDATE pages SET last_checked_at = NOW(), last_result = $2, isolation_fingerprint = $3 WHERE id = $1', [pageId, JSON.stringify(result), isolationFingerprint]);
     }
     else {
         await db_1.DB.query('UPDATE pages SET last_checked_at = NOW(), last_result = $2 WHERE id = $1', [

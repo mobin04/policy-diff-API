@@ -74,7 +74,7 @@ describe('PageService', () => {
             pageRepository.getPageInfo.mockResolvedValue(null);
             pageRepository.savePage.mockResolvedValue({
                 status: 'first_version',
-                pageId: 1
+                pageId: 1,
             });
             const result = await (0, page_service_1.checkPage)(mockUrl);
             expect(result.status).toBe('processed');
@@ -85,7 +85,7 @@ describe('PageService', () => {
             pageRepository.getPageInfo.mockResolvedValue({ id: 1, isolationFingerprint: 'fp' });
             pageRepository.savePage.mockResolvedValue({
                 status: 'unchanged',
-                pageId: 1
+                pageId: 1,
             });
             const result = await (0, page_service_1.checkPage)(mockUrl);
             expect(result.status).toBe('processed');
@@ -97,9 +97,12 @@ describe('PageService', () => {
             pageRepository.savePage.mockResolvedValue({
                 status: 'modified',
                 pageId: 1,
-                changes: mockChanges
+                changes: mockChanges,
             });
-            riskEngine_service_1.analyzeRisk.mockReturnValue({ risk_level: 'MEDIUM', changes: mockChanges.map(c => ({ ...c, risk: 'MEDIUM', reason: 'R' })) });
+            riskEngine_service_1.analyzeRisk.mockReturnValue({
+                risk_level: 'MEDIUM',
+                changes: mockChanges.map((c) => ({ ...c, risk: 'MEDIUM', reason: 'R' })),
+            });
             const result = await (0, page_service_1.checkPage)(mockUrl);
             expect(result.status).toBe('processed');
             expect(result.result?.message).toBe('Changes detected');
@@ -113,7 +116,7 @@ describe('PageService', () => {
             pageRepository.checkCooldown.mockResolvedValue({
                 inCooldown: true,
                 lastCheckedAt: new Date(),
-                lastResult: { message: 'Cached' }
+                lastResult: { message: 'Cached' },
             });
             const result = await (0, page_service_1.checkPage)(mockUrl, { minInterval: 10 });
             expect(result.status).toBe('skipped');
