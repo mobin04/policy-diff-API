@@ -1,4 +1,4 @@
-import Fastify from 'fastify';
+import Fastify, { FastifyInstance } from 'fastify';
 import { requestLoggerPlugin } from '../requestLogger';
 import { requestIdPlugin } from '../requestId';
 import * as apiLogRepository from '../../repositories/apiLog.repository';
@@ -9,18 +9,18 @@ jest.mock('../../repositories/apiLog.repository', () => ({
 }));
 
 describe('requestLoggerPlugin', () => {
-  let server: any;
+  let server: FastifyInstance;
 
   beforeEach(async () => {
     server = Fastify();
     // Register requestId as it's a dependency for requestLogger
     await server.register(requestIdPlugin);
     await server.register(requestLoggerPlugin);
-    
+
     server.get('/test', async () => ({ ok: true }));
     server.get('/health', async () => ({ status: 'ok' }));
     server.get('/ready', async () => ({ status: 'ready' }));
-    
+
     await server.ready();
     jest.clearAllMocks();
   });
@@ -36,14 +36,9 @@ describe('requestLoggerPlugin', () => {
     });
 
     // Wait for the fire-and-forget logApiRequest to be called
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
-    expect(apiLogRepository.logApiRequest).toHaveBeenCalledWith(
-      null,
-      '/test',
-      200,
-      expect.any(Number)
-    );
+    expect(apiLogRepository.logApiRequest).toHaveBeenCalledWith(null, '/test', 200, expect.any(Number));
   });
 
   it('should NOT log /health requests even with query parameters', async () => {
@@ -52,7 +47,7 @@ describe('requestLoggerPlugin', () => {
       url: '/health?t=12345',
     });
 
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(apiLogRepository.logApiRequest).not.toHaveBeenCalled();
   });
@@ -63,7 +58,7 @@ describe('requestLoggerPlugin', () => {
       url: '/ready',
     });
 
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(apiLogRepository.logApiRequest).not.toHaveBeenCalled();
   });
