@@ -81,7 +81,7 @@ describe('MonitorJobService', () => {
             tier: 'FREE',
             monthlyUsage: 1,
             monthlyQuota: 100,
-            remaining: 99
+            remaining: 99,
         });
         apiKeyRepository.countDistinctUrlsForKey.mockResolvedValue(0);
         pageRepository.ensurePageExists.mockResolvedValue(1);

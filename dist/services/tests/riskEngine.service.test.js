@@ -6,7 +6,7 @@ describe('RiskEngineV2', () => {
         { title: 'Privacy', content: 'We share data with third party affiliates.', hash: 'h1' },
         { title: 'Billing', content: 'Subscription renewal is automatic.', hash: 'h2' },
         { title: 'Intro', content: 'Welcome to our service.', hash: 'h3' },
-        { title: 'Arbitration', content: 'All disputes will be settled by binding arbitration.', hash: 'h4' }
+        { title: 'Arbitration', content: 'All disputes will be settled by binding arbitration.', hash: 'h4' },
     ];
     describe('Proximity Clustering', () => {
         test('Case 1: "We reserve the right to sell your personal data" -> HIGH', () => {
@@ -41,15 +41,17 @@ describe('RiskEngineV2', () => {
         test('Case 3: Removed "not" from "We do not sell your data" -> HIGH', () => {
             const oldSections = [{ title: 'Data', content: 'We do not sell your data', hash: 'old' }];
             const newSections = [{ title: 'Data', content: 'We sell your data', hash: 'new' }];
-            const changes = [{
+            const changes = [
+                {
                     type: 'MODIFIED',
                     section: 'Data',
                     details: [
                         { value: 'We ', added: false, removed: false },
                         { value: 'do not ', added: false, removed: true },
-                        { value: 'sell your data', added: true, removed: false }
-                    ]
-                }];
+                        { value: 'sell your data', added: true, removed: false },
+                    ],
+                },
+            ];
             const result = (0, riskEngine_service_1.analyzeRisk)(changes, newSections, oldSections);
             expect(result.risk_level).toBe('HIGH');
             expect(result.changes[0].reason).toBe('Negation removed near high-risk clause');
@@ -57,14 +59,16 @@ describe('RiskEngineV2', () => {
     });
     describe('Structural Erosion', () => {
         test('Case 4: Deleted arbitration section -> HIGH', () => {
-            const oldSections = [{
+            const oldSections = [
+                {
                     title: 'Arbitration',
                     // 1. "sell ... data" (Proximity cluster)
                     // 2. "arbitrat" (High risk root)
                     // 3. "Arbitration" in title (High risk title)
                     content: 'We may sell your personal data. All disputes settled by arbitrat.',
-                    hash: 'old'
-                }];
+                    hash: 'old',
+                },
+            ];
             const changes = [{ type: 'DELETED', section: 'Arbitration' }];
             const result = (0, riskEngine_service_1.analyzeRisk)(changes, [], oldSections);
             expect(result.risk_level).toBe('HIGH');
@@ -73,13 +77,15 @@ describe('RiskEngineV2', () => {
     });
     describe('Section Multipliers', () => {
         test('Case 5: Numeric change in pricing -> HIGH (due to 1.5x multiplier on MEDIUM)', () => {
-            // Pricing has 1.5 multiplier. 
-            // If we detect MEDIUM risk (e.g. "billing" or "subscription"), 
+            // Pricing has 1.5 multiplier.
+            // If we detect MEDIUM risk (e.g. "billing" or "subscription"),
             // and multiplier is 1.5, it remains MEDIUM (since multiplier < 2).
             // Wait, rule: "If baseRisk === MEDIUM and multiplier >= 2 -> escalate to HIGH"
             // Pricing is 1.5, so 1.5 < 2.
             // Arbitration is 2.0. Let's use Arbitration.
-            const sections = [{ title: 'Arbitration Policy', content: 'We updated our billing rules.', hash: 'h' }];
+            const sections = [
+                { title: 'Arbitration Policy', content: 'We updated our billing rules.', hash: 'h' },
+            ];
             const changes = [{ type: 'ADDED', section: 'Arbitration Policy' }];
             const result = (0, riskEngine_service_1.analyzeRisk)(changes, sections);
             expect(result.risk_level).toBe('HIGH');

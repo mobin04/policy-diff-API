@@ -201,6 +201,112 @@ curl -X POST http://localhost:3000/v1/check \
 
 ---
 
+# Official Node.js SDK
+
+PolicyDiff provides an official Node.js/TypeScript SDK to simplify integration into your backend applications. It provides full type safety, automatic retries, and streamlined workflows for monitoring policy changes.
+
+Package: [https://www.npmjs.com/package/policydiff](https://www.npmjs.com/package/policydiff)
+
+## Getting Started
+
+### 1. Get an API Key
+
+To use the SDK, obtain an API key from the [policydiff.org](https://policydiff.org). You can manage keys, track quotas, and configure webhooks from the dashboard.
+
+### 2. Installation
+
+```bash
+npm install policydiff
+```
+
+### 3. Initialization
+
+```typescript
+import { PolicyDiff } from 'policydiff';
+
+const client = new PolicyDiff({
+  apiKey: process.env.POLICYDIFF_API_KEY
+});
+```
+
+## Usage Examples
+
+### Synchronous Analysis
+Use the `check` method for immediate analysis of quick-fetch pages.
+
+```typescript
+try {
+  const result = await client.check('https://stripe.com/privacy');
+
+  if (result.risk_level === 'HIGH') {
+    console.warn('High risk changes detected:', result.changes);
+  }
+} catch (error) {
+  console.error('Analysis failed:', error.message);
+}
+```
+
+### Asynchronous Monitoring Workflow
+For larger policies or long-running checks, use the asynchronous `monitor` workflow.
+
+```typescript
+// 1. Start a monitoring job
+const { job_id } = await client.monitor('https://aws.amazon.com/service-terms');
+
+// 2. Poll for results (or wait for webhook)
+const job = await client.getJob(job_id);
+
+if (job.status === 'COMPLETED') {
+  console.log('Results:', job.result);
+}
+```
+
+### Batch Monitoring
+Monitor multiple URLs in a single request.
+
+```typescript
+const batch = await client.monitorBatch({
+  urls: [
+    'https://example.com/terms',
+    'https://example.com/privacy',
+    'https://example.com/cookies'
+  ]
+});
+
+console.log(`Started batch ${batch.batch_id} with ${batch.job_count} jobs.`);
+```
+
+### TypeScript Support
+The SDK is written in TypeScript and provides comprehensive interfaces for all responses and change types.
+
+```typescript
+import { DiffResult, RiskedChange } from 'policydiff';
+
+const result: DiffResult = await client.check({ url: 'https://stripe.com/privacy' });
+const highRiskChanges: RiskedChange[] = result.changes?.filter(c => c.risk === 'HIGH') || [];
+```
+
+### Error Handling
+The SDK throws specific error types to help you handle failures gracefully.
+
+```typescript
+import { PolicyDiffError, RateLimitError, AuthError } from 'policydiff';
+
+try {
+  await client.check({ url: '...' });
+} catch (err) {
+  if (err instanceof RateLimitError) {
+    console.error('Rate limit exceeded. Resets at:', err.resetAt);
+  } else if (err instanceof AuthError) {
+    console.error('Invalid API Key');
+  } else if (err instanceof PolicyDiffError) {
+    console.error(`API Error: ${err.code} - ${err.message}`);
+  }
+}
+```
+
+---
+
 ## API Reference Overview
 
 | Endpoint | Method | Description |

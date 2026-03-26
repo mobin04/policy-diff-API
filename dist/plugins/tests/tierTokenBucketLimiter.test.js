@@ -14,13 +14,49 @@ describe('TierTokenBucketLimiterPlugin', () => {
         app.addHook('onRequest', async (request) => {
             const authHeader = request.headers.authorization;
             if (authHeader === 'Bearer free-key') {
-                request.apiKey = { id: 1, keyHash: 'h1', name: 'Free', email: 'f@e.com', environment: 'dev', isActive: true, createdAt: new Date(), tier: 'FREE', monthlyQuota: 30, monthlyUsage: 0, quotaResetAt: new Date() };
+                request.apiKey = {
+                    id: 1,
+                    keyHash: 'h1',
+                    name: 'Free',
+                    email: 'f@e.com',
+                    environment: 'dev',
+                    isActive: true,
+                    createdAt: new Date(),
+                    tier: 'FREE',
+                    monthlyQuota: 30,
+                    monthlyUsage: 0,
+                    quotaResetAt: new Date(),
+                };
             }
             else if (authHeader === 'Bearer starter-key') {
-                request.apiKey = { id: 2, keyHash: 'h2', name: 'Starter', email: 's@e.com', environment: 'dev', isActive: true, createdAt: new Date(), tier: 'STARTER', monthlyQuota: 500, monthlyUsage: 0, quotaResetAt: new Date() };
+                request.apiKey = {
+                    id: 2,
+                    keyHash: 'h2',
+                    name: 'Starter',
+                    email: 's@e.com',
+                    environment: 'dev',
+                    isActive: true,
+                    createdAt: new Date(),
+                    tier: 'STARTER',
+                    monthlyQuota: 500,
+                    monthlyUsage: 0,
+                    quotaResetAt: new Date(),
+                };
             }
             else if (authHeader === 'Bearer pro-key') {
-                request.apiKey = { id: 3, keyHash: 'h3', name: 'Pro', email: 'p@e.com', environment: 'dev', isActive: true, createdAt: new Date(), tier: 'PRO', monthlyQuota: 2500, monthlyUsage: 0, quotaResetAt: new Date() };
+                request.apiKey = {
+                    id: 3,
+                    keyHash: 'h3',
+                    name: 'Pro',
+                    email: 'p@e.com',
+                    environment: 'dev',
+                    isActive: true,
+                    createdAt: new Date(),
+                    tier: 'PRO',
+                    monthlyQuota: 2500,
+                    monthlyUsage: 0,
+                    quotaResetAt: new Date(),
+                };
             }
         });
         const mockAuth = async () => { };
@@ -54,7 +90,7 @@ describe('TierTokenBucketLimiterPlugin', () => {
             await app.inject({ method: 'GET', url: '/test', headers: { authorization: 'Bearer free-key' } });
         }
         // Wait for 2.5 seconds. Refill rate is 0.5/sec, so 1.25 tokens should be added.
-        await new Promise(resolve => setTimeout(resolve, 2500));
+        await new Promise((resolve) => setTimeout(resolve, 2500));
         const res = await app.inject({
             method: 'GET',
             url: '/test',
@@ -75,7 +111,7 @@ describe('TierTokenBucketLimiterPlugin', () => {
             await app.inject({ method: 'GET', url: '/test', headers: { authorization: 'Bearer starter-key' } });
         }
         // Refill rate is 2/sec. Wait 1.5s -> 3 tokens.
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        await new Promise((resolve) => setTimeout(resolve, 1500));
         const res1 = await app.inject({ method: 'GET', url: '/test', headers: { authorization: 'Bearer starter-key' } });
         const res2 = await app.inject({ method: 'GET', url: '/test', headers: { authorization: 'Bearer starter-key' } });
         const res3 = await app.inject({ method: 'GET', url: '/test', headers: { authorization: 'Bearer starter-key' } });
@@ -92,9 +128,9 @@ describe('TierTokenBucketLimiterPlugin', () => {
             await app.inject({ method: 'GET', url: '/test', headers: { authorization: 'Bearer pro-key' } });
         }
         // Refill rate is 10/sec. Wait 500ms -> 5 tokens.
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 500));
         // Try 10 requests. We expect some to succeed and then fail.
-        // Given overhead, maybe 6-7 succeed? 
+        // Given overhead, maybe 6-7 succeed?
         // Let's just check that it eventually fails again.
         let successCount = 0;
         let failCount = 0;

@@ -180,9 +180,7 @@ describe('Structural Diff Engine Tests', () => {
             { title: 'ABCDEFG', content: 'C1', hash: 'h1' },
             { title: 'ABCDEFH', content: 'C2', hash: 'h2' },
         ];
-        const ns = [
-            { title: 'ABCDEFX', content: 'C1 mod', hash: 'h1-mod' },
-        ];
+        const ns = [{ title: 'ABCDEFX', content: 'C1 mod', hash: 'h1-mod' }];
         // Similarity: 1 - 1/7 = 0.857 (Low confidence: 0.85-0.89)
         const result = (0, differ_service_1.diffSections)(os, ns, { url: 'test' });
         expect(result.fuzzy_match_count).toBe(1);

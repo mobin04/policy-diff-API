@@ -180,7 +180,11 @@ describe('Tier System V2 Enforcement', () => {
         test('FREE tier should enforce 1 concurrent job', async () => {
             const mockUsage = { id: mockApiKeyId, tier: 'FREE' };
             const jobId = 'job-1';
-            monitorJobRepository.getJobById.mockResolvedValue({ id: jobId, apiKeyId: mockApiKeyId, pageId: 10 });
+            monitorJobRepository.getJobById.mockResolvedValue({
+                id: jobId,
+                apiKeyId: mockApiKeyId,
+                pageId: 10,
+            });
             monitorJobRepository.getActiveJobCountForKey.mockResolvedValue(1);
             db_1.DB.query.mockResolvedValue({ rows: [mockUsage] });
             const { processMonitorJob } = require('../monitorJob.service');
