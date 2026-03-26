@@ -21,6 +21,11 @@ import { RequestLogEntry } from '../types';
 async function requestLoggerPluginFn(fastify: FastifyInstance): Promise<void> {
   // Log completed requests with timing and metadata
   fastify.addHook('onResponse', async (request: FastifyRequest, reply: FastifyReply) => {
+    // Skip logging for health and readiness probes to avoid noise
+    if (request.url === '/health' || request.url === '/ready') {
+      return;
+    }
+
     const responseTime = Date.now() - request.startTime;
     const apiKeyId = request.apiKey?.id ?? null;
 
