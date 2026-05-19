@@ -119,5 +119,16 @@ describe('RiskEngineV2', () => {
       const result = analyzeRisk(changes, sections);
       expect(result.risk_level).toBe('HIGH');
     });
+
+    test('Should classify behavioral tracking as MEDIUM risk', () => {
+      const sections: Section[] = [
+        { title: 'Advertising', content: 'We use behavioral tracking to improve advertising.', hash: 'h' },
+      ];
+      const changes: Change[] = [{ type: 'ADDED', section: 'Advertising' }];
+      const result = analyzeRisk(changes, sections);
+
+      expect(result.risk_level).toBe('MEDIUM');
+      expect(result.changes[0].reason).toContain('Medium risk keyword root detected');
+    });
   });
 });
