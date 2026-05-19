@@ -33,6 +33,30 @@
 export { InvalidUrlError } from '../errors';
 import { InvalidUrlError } from '../errors';
 
+function isLocalOrPrivateHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+
+  if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
+    return true;
+  }
+
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) {
+    return true;
+  }
+
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)) {
+    return true;
+  }
+
+  const private172Match = host.match(/^172\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/);
+  if (private172Match) {
+    const secondOctet = Number(private172Match[1]);
+    return secondOctet >= 16 && secondOctet <= 31;
+  }
+
+  return false;
+}
+
 /**
  * Canonicalize a URL to ensure consistent identity across variants
  *
@@ -79,12 +103,10 @@ export function canonicalizeUrl(inputUrl: string): string {
     throw new InvalidUrlError(`Invalid protocol: ${parsed.protocol}`);
   }
 
-  // Force HTTPS protocol
-  parsed.protocol = 'https:';
-
   // Hostname is automatically lowercased by URL API
   // But let's be explicit for clarity
   const hostname = parsed.hostname.toLowerCase();
+  const protocol = isLocalOrPrivateHost(hostname) ? parsed.protocol : 'https:';
 
   // Normalize pathname:
   // 1. Collapse duplicate slashes (//privacy// → /privacy/)
@@ -98,10 +120,11 @@ export function canonicalizeUrl(inputUrl: string): string {
 
   // Build canonical URL without query params or hash
   // Note: We preserve the port if non-standard
-  let canonical = `https://${hostname}`;
+  let canonical = `${protocol}//${hostname}`;
 
   // Include port only if non-standard
-  if (parsed.port && parsed.port !== '443') {
+  const defaultPort = protocol === 'https:' ? '443' : '80';
+  if (parsed.port && parsed.port !== defaultPort) {
     canonical += `:${parsed.port}`;
   }
 

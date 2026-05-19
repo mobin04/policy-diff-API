@@ -16,6 +16,7 @@ import {
   getMaxConcurrentJobs,
 } from '../utils/concurrencyGuard';
 import { ensurePageExists } from '../repositories/page.repository';
+import { upsertActiveMonitoredUrl } from '../repositories/monitoredUrl.repository';
 import {
   createJob,
   markJobProcessing,
@@ -41,6 +42,7 @@ import {
 } from '../errors';
 import { loadUsageRowForUpdate, consumeJobsWithClient } from './usage.service';
 import { runCrashRecovery } from './startupRecoveryService';
+import { notifyPolicyChangeIfNeeded } from './notification.service';
 
 const MAX_JOB_RUNTIME_MS = 15000;
 
@@ -187,10 +189,13 @@ export async function createMonitorJob(
     // 2. Ensure page exists (upsert)
     const pageId = await ensurePageExists(canonicalUrl, client);
 
-    // 3. Create job with PENDING status
+    // 3. Store or reactivate automatic monitoring subscription
+    await upsertActiveMonitoredUrl(apiKeyId, pageId, client);
+
+    // 4. Create job with PENDING status
     const job = await createJob(pageId, apiKeyId, null, client);
 
-    // 4. Store idempotency record if requested (atomic with job creation)
+    // 5. Store idempotency record if requested (atomic with job creation)
     if (idempotencyOptions) {
       const responseBody = {
         job_id: job.id,
@@ -315,6 +320,7 @@ export async function processMonitorJob(jobId: string, logger?: Logger): Promise
 
       // Store result and mark completed
       await markJobCompleted(jobId, result);
+      await notifyPolicyChangeIfNeeded(job.apiKeyId, job.url, result, logger);
 
       if (logger) {
         logger.info({ jobId, status: 'COMPLETED' }, 'Job completed successfully');
