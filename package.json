@@ -47,6 +47,7 @@
     "got-scraping": "^4.2.1",
     "node-cron": "^3.0.3",
     "pg": "^8.18.0",
-    "pino-roll": "^1.1.0"
+    "pino-roll": "^1.1.0",
+    "resend": "^4.8.0"
   }
 }

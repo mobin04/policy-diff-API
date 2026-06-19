@@ -16,6 +16,7 @@ import { getActiveJobCount } from './utils/concurrencyGuard';
 import { markAsInitialized } from './routes/health.route';
 import { initReconciliation, reconcileConcurrencyState } from './services/concurrencyReconciliation.service';
 import { performBackup } from './services/backup.service';
+import { runDailyMonitoring } from './services/dailyMonitoring.service';
 import cron from 'node-cron';
 
 let reconciliationInterval: NodeJS.Timeout | null = null;
@@ -57,6 +58,18 @@ const start = async () => {
     }, 10000);
 
     // 5. Setup Deterministic Background Scheduling (Single Instance only)
+    cron.schedule(
+      '0 0 * * *',
+      async () => {
+        try {
+          await runDailyMonitoring(app.log);
+        } catch (err) {
+          app.log.error({ err }, 'Daily monitoring scheduler failed');
+        }
+      },
+      { timezone: 'Asia/Kolkata' },
+    );
+
     if (IS_PRODUCTION) {
       // Schedule DB Backup daily at 03:00 AM
       cron.schedule('0 3 * * *', async () => {

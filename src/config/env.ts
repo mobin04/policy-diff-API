@@ -60,6 +60,11 @@ export const GLOBAL_RATE_LIMIT = getRequiredInt('GLOBAL_RATE_LIMIT', 1000);
 // Logging
 export const LOG_LEVEL = process.env.LOG_LEVEL || (IS_PRODUCTION ? 'info' : 'debug');
 
+// Email notifications
+export const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+export const EMAIL_FROM = process.env.EMAIL_FROM || 'PolicyDiff <support@policydiff.org>';
+export const APP_NAME = process.env.APP_NAME || 'PolicyDiff';
+
 // Server
 export const HOST = '0.0.0.0';
 
@@ -82,5 +87,10 @@ export function validateProductionConfig() {
   // 3. Ensure DATABASE_URL is not local in production
   if (DATABASE_URL.includes('localhost') || DATABASE_URL.includes('127.0.0.1')) {
     throw new Error('PROD DB ISOLATION ERROR: DATABASE_URL cannot point to localhost in production.');
+  }
+
+  // 4. Ensure change notification email can be sent in production
+  if (!RESEND_API_KEY) {
+    throw new Error('SECURE CONFIG ERROR: RESEND_API_KEY must be configured in production.');
   }
 }

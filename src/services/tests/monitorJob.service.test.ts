@@ -5,6 +5,7 @@ import * as pageRepository from '../../repositories/page.repository';
 import * as monitorJobRepository from '../../repositories/monitorJob.repository';
 import * as apiKeyRepository from '../../repositories/apiKey.repository';
 import * as idempotencyRepository from '../../repositories/idempotency.repository';
+import * as monitoredUrlRepository from '../../repositories/monitoredUrl.repository';
 import * as usageService from '../usage.service';
 import { QuotaExceededError } from '../../errors';
 
@@ -14,7 +15,9 @@ jest.mock('../../repositories/page.repository');
 jest.mock('../../repositories/monitorJob.repository');
 jest.mock('../../repositories/apiKey.repository');
 jest.mock('../../repositories/idempotency.repository');
+jest.mock('../../repositories/monitoredUrl.repository');
 jest.mock('../usage.service');
+jest.mock('../notification.service');
 
 // We need to mock the module but keep createMonitorJob original
 jest.mock('../monitorJob.service', () => {
@@ -70,6 +73,7 @@ describe('MonitorJobService', () => {
         expect(canonicalizeUrl).toHaveBeenCalledWith(mockUrl);
         expect(usageService.consumeJobsWithClient).toHaveBeenCalled();
         expect(pageRepository.ensurePageExists).toHaveBeenCalledWith(mockCanonicalUrl, mockClient);
+        expect(monitoredUrlRepository.upsertActiveMonitoredUrl).toHaveBeenCalledWith(mockApiKeyId, 1, mockClient);
         expect(monitorJobRepository.createJob).toHaveBeenCalledWith(1, mockApiKeyId, null, mockClient);
       });
 
